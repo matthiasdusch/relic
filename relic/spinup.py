@@ -72,8 +72,6 @@ def spinup_with_tbias(gdir, fls, dl, len2003, glena=None):
     mb = MultipleFlowlineMassBalance(gdir, fls=fls,
                                      mb_model_class=ConstantMassBalance)
 
-
-
     opti = scipy.optimize.minimize_scalar(minimize_dl,
                                           bracket=(fg, fg-0.2),
                                           tol=1e-2,
@@ -92,3 +90,5 @@ def spinup_with_tbias(gdir, fls, dl, len2003, glena=None):
 
     # --------- SPIN IT UP FOR REAL ---------------
     minimize_dl(tbias, mb, fls, dl, len2003, glena, gdir, False)
+
+    return tbias

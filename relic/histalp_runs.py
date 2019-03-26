@@ -22,7 +22,7 @@ def minimize_glena(glena, gdir, meta, obs_ye, obs_dl, optimization):
     # how long shall we go? MINUS for positive length change!
     dl = -meta['dL2003'].iloc[0]
 
-    spinup_with_tbias(gdir, fls, dl, len2003, glena=glena)
+    tbias = spinup_with_tbias(gdir, fls, dl, len2003, glena=glena)
     tmp_mod = FileModel(gdir.get_filepath('model_run',
                                           filesuffix='_spinup_%.3e' % glena))
 
@@ -43,6 +43,8 @@ def minimize_glena(glena, gdir, meta, obs_ye, obs_dl, optimization):
     print('glenA: %.2e  delta: %.4f' % (glena, delta))
     if optimization is True:
         return delta
+    else:
+        return tbias
     """
     else:
         dlhist = ds.length_m.to_dataframe()['length_m']
