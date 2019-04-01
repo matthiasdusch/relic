@@ -25,6 +25,7 @@ def minimize_glena(glena, gdir, meta, obs_ye, obs_dl, optimization):
     tbias = spinup_with_tbias(gdir, fls, dl, len2003, glena=glena)
     tmp_mod = FileModel(gdir.get_filepath('model_run',
                                           filesuffix='_spinup_%.3e' % glena))
+    tmp_mod.run_until(tmp_mod.last_yr)
 
     # --------- HIST IT DOWN ---------------
     tasks.run_from_climate_data(gdir, ys=meta['first'].iloc[0], ye=obs_ye,
