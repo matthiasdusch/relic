@@ -58,3 +58,32 @@ def minimize_glena(glena, gdir, meta, obs_ye, obs_dl, optimization):
 
         return dlhist
     """
+
+
+def single_glena(gdir, meta, obs_ye, obs_dl):
+
+    # --------- HOW SHALL WE SPIN ---------------
+
+    # how long are we at initialization
+    fls = gdir.read_pickle('model_flowlines')
+    len2003 = fls[-1].length_m
+    # how long shall we go? MINUS for positive length change!
+    dl = -meta['dL2003'].iloc[0]
+
+    tbias = spinup_with_tbias(gdir, fls, dl, len2003)
+    tmp_mod = FileModel(gdir.get_filepath('model_run',
+                                          filesuffix='_spinup'))
+    tmp_mod.run_until(tmp_mod.last_yr)
+
+    # --------- HIST IT DOWN ---------------
+    tasks.run_from_climate_data(gdir, ys=meta['first'].iloc[0], ye=obs_ye,
+                                init_model_fls=tmp_mod.fls,
+                                output_filesuffix='_histalp')
+
+    # compare hist run to observations
+    ds = xr.open_dataset(gdir.get_filepath('model_diagnostics',
+                                           filesuffix='_histalp'))
+    histalp_dl = ds.length_m.values[-1] - ds.length_m.values[0]
+    delta = (histalp_dl - obs_dl)**2
+    print('delta: %.4f' % delta)
+    return tbias

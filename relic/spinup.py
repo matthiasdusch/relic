@@ -30,11 +30,17 @@ def minimize_dl(tbias, mb, fls, dl, len2003, glena, gdir, optimization):
         print('tbias: %.2f  delta: %.4f' % (tbias, delta))
         return delta
     else:
+
+        if glena is None:
+            filesuffix = '_spinup'
+        else:
+           filesuffix = '_spinup_%.3e' % glena
+
         run_path = gdir.get_filepath('model_run',
-                                     filesuffix='_spinup_%.3e' % glena,
+                                     filesuffix=filesuffix,
                                      delete=True)
         diag_path = gdir.get_filepath('model_diagnostics',
-                                      filesuffix='_spinup_%.3e' % glena,
+                                      filesuffix=filesuffix,
                                       delete=True)
         model2 = FluxBasedModel(fls, mb_model=mb,
                                 time_stepping='default',
@@ -73,7 +79,7 @@ def spinup_with_tbias(gdir, fls, dl, len2003, glena=None):
                                      mb_model_class=ConstantMassBalance)
 
     opti = scipy.optimize.minimize_scalar(minimize_dl,
-                                          bracket=(fg, fg-0.2),
+                                          bracket=(fg, fg-1),
                                           tol=1e-2,
                                           args=(mb, fls, dl, len2003, glena,
                                                 gdir, True),
