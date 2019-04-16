@@ -11,6 +11,26 @@ from oggm.core.flowline import FileModel, FluxBasedModel
 from oggm.utils import cfg
 
 
+def relic_run_until_equilibrium(model, rate=1e-4, ystep=10, max_ite=100):
+
+    ite = 0
+    was_close_zero = 0
+    t_rate = 1
+    while (t_rate > rate) and (ite <= max_ite) and (was_close_zero < 5):
+        ite += 1
+        v_bef = model.volume_m3
+        for _y in np.arange(ystep):
+            model.run_until(model.yr + 1)
+        v_af = model.volume_m3
+        if np.isclose(v_bef, 0., atol=1):
+            t_rate = 1
+            was_close_zero += 1
+        else:
+            t_rate = np.abs(v_af - v_bef) / v_bef
+    if ite > max_ite:
+        raise RuntimeError('Did not find equilibrium.')
+
+
 def minimize_dl(tbias, mb, fls, dl, len2003, glena, gdir, optimization):
     # Mass balance
     mb.temp_bias = tbias
@@ -18,9 +38,11 @@ def minimize_dl(tbias, mb, fls, dl, len2003, glena, gdir, optimization):
     model = FluxBasedModel(fls, mb_model=mb,
                            time_stepping='default',
                            glen_a=glena)
-    model.run_until(150)
+
+    for _y in np.arange(150):
+        model.run_until(model.yr + 1)
     try:
-        model.run_until_equilibrium(rate=1e-4, ystep=10, max_ite=100)
+        relic_run_until_equilibrium(model)
     except (RuntimeError, ValueError):
         pass
 
@@ -86,11 +108,30 @@ def spinup_with_tbias(gdir, fls, dl, len2003, glena=None):
                                           options={'maxiter': 30}
                                           )
 
+    print('First optimization result:')
     print(opti)
+
+    if np.sqrt(opti.fun) > 100:
+        # try again, a bit colder...
+        opti2 = scipy.optimize.minimize_scalar(minimize_dl,
+                                               bracket=(opti.x-0.5, opti.x-1),
+                                               tol=1e-2,
+                                               args=(mb, fls, dl, len2003, glena,
+                                                     gdir, True),
+                                               options={'maxiter': 30}
+                                              )
+        print('Second optimization result:')
+        print(opti2)
+
+        if opti2.fun < 100:
+            opti = opti2
+        else:
+            raise RuntimeError('Optimization failed....')
 
     # delta = opti.fun
     # just go with it and assert in the postprocessing
-    # assert np.sqrt(delta) < 100
+
+    assert np.sqrt(opti.fun) < 100
 
     tbias = opti.x
 

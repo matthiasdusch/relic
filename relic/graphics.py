@@ -54,7 +54,8 @@ def plt_histalp_runs(spinup, df, meta, data, pout, colname=None, cols=None):
         try:
             spin = (spinup.loc[:, col] - spinup.loc[0, col]).dropna().iloc[-1] # [0]
         except IndexError:
-            pass
+            # pass
+            continue
 
         dl = spin + meta['dL2003'].iloc[0]
         # relative length change
