@@ -21,7 +21,7 @@ def minimize_dl(tbias, mb, fls, dl, len2003, glena, gdir, optimization):
     model.run_until(150)
     try:
         model.run_until_equilibrium(rate=1e-4, ystep=10, max_ite=100)
-    except RuntimeError:
+    except (RuntimeError, ValueError):
         pass
 
     if optimization is True:
