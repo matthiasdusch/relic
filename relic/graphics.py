@@ -27,8 +27,14 @@ def visual_check_spinup(df, meta, tbias, pout, colname=None, cols=None):
         # relative spinup length
         lsp = df.loc[:, col] - df.loc[0, col]
         # lsp = df.loc[:, col]
-
-        ax.plot(lsp.dropna(), label='OGGM %s = %.2e, tbias = %.2f' % (colname, col, tbias))
+        if lsp.dropna().size > 0:
+            toplot = lsp.dropna().copy()
+            tb = '%.2f' % tbias[col]
+        else:
+            toplot = obs.copy()
+            tb = 'RunTimeError'
+        ax.plot(toplot,
+                label='OGGM %s = %.2e, tbias = %s' % (colname, col, tb))
     ax.plot(obs, 'k', label='Observed dL (1850-2003)')
     ax.set_title('%s %s' % (meta['name'].iloc[0], meta['RGI_ID'].iloc[0]))
     ax.set_ylabel('delte length [m]')
