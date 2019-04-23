@@ -1,15 +1,22 @@
 import numpy as np
 import pandas as pd
 import xarray as xr
+import logging
 
 from oggm import tasks, cfg
-from oggm.core.flowline import FileModel
+from oggm.core.flowline import FileModel, robust_model_run
 from oggm.core.massbalance import (MultipleFlowlineMassBalance,
-                                   ConstantMassBalance)
+                                   ConstantMassBalance,
+                                   PastMassBalance)
 from oggm.workflow import execute_entity_task
 from oggm.core.climate import compute_ref_t_stars
+from oggm import entity_task
+from oggm.exceptions import InvalidParamsError
 
 from relic.spinup import spinup_with_tbias, minimize_dl
+
+# Module logger
+log = logging.getLogger(__name__)
 
 
 def minimize_glena(glena, gdir, meta, obs_ye, obs_dl, optimization):
@@ -118,7 +125,53 @@ def given_spinup_tbias(gdir, meta=None, data=None):
     return tbias
 
 
-def simple_spinup_plus_histalp(gdir, meta=None, obs=None):
+@entity_task(log)
+def relic_from_climate_data(gdir, ys=None, ye=None, min_ys=None,
+                            store_monthly_step=False,
+                            climate_filename='climate_monthly',
+                            climate_input_filesuffix='', output_filesuffix='',
+                            init_model_filesuffix=None, init_model_yr=None,
+                            init_model_fls=None, zero_initial_glacier=False,
+                            mass_balance_bias=None,
+                            **kwargs):
+    """ copy of flowline.run_from_climate_data
+    """
+
+    if ys is None:
+        try:
+            ys = gdir.rgi_date.year
+        except AttributeError:
+            ys = gdir.rgi_date
+    if ye is None:
+        raise InvalidParamsError('Need to set the `ye` kwarg!')
+    if min_ys is not None:
+        ys = ys if ys < min_ys else min_ys
+
+    if init_model_filesuffix is not None:
+        fp = gdir.get_filepath('model_run', filesuffix=init_model_filesuffix)
+        with FileModel(fp) as fmod:
+            if init_model_yr is None:
+                init_model_yr = fmod.last_yr
+            fmod.run_until(init_model_yr)
+            init_model_fls = fmod.fls
+
+    if (mass_balance_bias is not None) and ('merged' in gdir.rgi_id):
+        raise ValueError('Need to think about this...')
+
+    mb = MultipleFlowlineMassBalance(gdir, mb_model_class=PastMassBalance,
+                                     filename=climate_filename,
+                                     input_filesuffix=climate_input_filesuffix,
+                                     bias=mass_balance_bias)
+
+    return robust_model_run(gdir, output_filesuffix=output_filesuffix,
+                            mb_model=mb, ys=ys, ye=ye,
+                            store_monthly_step=store_monthly_step,
+                            init_model_fls=init_model_fls,
+                            zero_initial_glacier=zero_initial_glacier,
+                            **kwargs)
+
+
+def simple_spinup_plus_histalp(gdir, meta=None, obs=None, mb_bias=None):
 
     # select meta and obs
     meta = meta.loc[meta['RGI_ID'] == gdir.rgi_id].copy()
@@ -135,27 +188,50 @@ def simple_spinup_plus_histalp(gdir, meta=None, obs=None):
         tmp_mod.run_until(tmp_mod.last_yr)
 
         # --------- HIST IT DOWN ---------------
-        tasks.run_from_climate_data(gdir, ys=meta['first'].iloc[0], ye=obs_ye,
-                                    init_model_fls=tmp_mod.fls,
-                                    output_filesuffix='_histalp')
+        relic_from_climate_data(gdir, ys=meta['first'].iloc[0], ye=obs_ye,
+                                init_model_fls=tmp_mod.fls,
+                                output_filesuffix='_histalp',
+                                mass_balance_bias=mb_bias)
 
         ds1 = xr.open_dataset(gdir.get_filepath('model_diagnostics',
                                                 filesuffix='_histalp'))
         ds2 = xr.open_dataset(gdir.get_filepath('model_diagnostics',
                                                 filesuffix='_spinup'))
+        # store mean temperature and precipitation
+        yindex = np.arange(meta['first'].iloc[0], obs_ye+1)
+        cm = xr.open_dataset(gdir.get_filepath('climate_monthly'))
+        tmean = cm.temp.groupby('time.year').mean().loc[yindex].to_pandas()
+        pmean = cm.prcp.groupby('time.year').mean().loc[yindex].to_pandas()
+
         rval = {'rgi_id': gdir.rgi_id, 'name': meta['name'].iloc[0],
                 'histalp': ds1.length_m.to_dataframe()['length_m'],
                 'spinup': ds2.length_m.to_dataframe()['length_m'],
-                'tbias': tbias}
+                'tbias': tbias, 'tmean': tmean, 'pmean': pmean}
     except (FloatingPointError, RuntimeError):
 
         rval = {'rgi_id': gdir.rgi_id, 'name': meta['name'].iloc[0],
                 'histalp': np.nan,
                 'spinup': np.nan,
-                'tbias': np.nan}
+                'tbias': np.nan, 'tmean': np.nan, 'pmean': np.nan}
         pass
 
     return rval
+
+
+def vary_mass_balance_bias(gdirs, meta, obs, mbbias=None):
+
+    if mbbias is None:
+        print('use optimization to find a mbbias')
+    else:
+
+        rval_dict = {}
+        for mb in mbbias:
+            # actual spinup and histalp
+            rval_dict[mb] = execute_entity_task(simple_spinup_plus_histalp,
+                                                gdirs, meta=meta, obs=obs,
+                                                mb_bias=mb)
+
+    return rval_dict
 
 
 def vary_precipitation_sf(gdirs, meta, obs, pcpsf=None):

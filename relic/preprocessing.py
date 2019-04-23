@@ -44,6 +44,8 @@ def configure(workdir, glclist, glena_factor=1.5):
     gdirs = workflow.init_glacier_regions(glclist, from_prepro_level=3)
     if cfg.PARAMS['baseline_climate'] == 'HISTALP':
         workflow.execute_entity_task(tasks.process_histalp_data, gdirs)
+        workflow.execute_entity_task(tasks.local_t_star, gdirs)
+        workflow.execute_entity_task(tasks.mu_star_calibration, gdirs)
     workflow.execute_entity_task(tasks.init_present_time_glacier, gdirs)
 
     return gdirs
