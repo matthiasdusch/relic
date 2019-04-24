@@ -46,13 +46,14 @@ def visual_check_spinup(df, meta, tbias, pout, colname=None, cols=None):
 
 
 def plt_histalp_runs(spinup, df, meta, data, pout, colname=None, cols=None):
+    if len(df) == 0:
+        return
     assert len(meta) == 1
+    assert meta['first'].iloc[0] == df.index[0]
     if cols is None:
         cols = df.columns.levels[0]
     fig, ax = plt.subplots(figsize=[15, 8])
     data.plot(ax=ax, color='k', marker='.', label='Observed length change')
-
-    assert meta['first'].iloc[0] == df.index[0]
 
     for col in cols:
         if isinstance(col, tuple) and (len(col) == 1):
