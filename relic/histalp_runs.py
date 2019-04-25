@@ -207,13 +207,18 @@ def simple_spinup_plus_histalp(gdir, meta=None, obs=None, mb_bias=None):
                 'histalp': ds1.length_m.to_dataframe()['length_m'],
                 'spinup': ds2.length_m.to_dataframe()['length_m'],
                 'tbias': tbias, 'tmean': tmean, 'pmean': pmean}
-    except (FloatingPointError, RuntimeError):
+    except BrokenPipeError:
+        print('dummyerror, i wanna see it')
+        pass
+    """
+    except (FloatingPointError, RuntimeError) as err:
 
         rval = {'rgi_id': gdir.rgi_id, 'name': meta['name'].iloc[0],
                 'histalp': np.nan,
                 'spinup': np.nan,
                 'tbias': np.nan, 'tmean': np.nan, 'pmean': np.nan}
         pass
+    """
 
     return rval
 

@@ -28,7 +28,7 @@ def relic_run_until_equilibrium(model, rate=1e-4, ystep=10, max_ite=100):
         else:
             t_rate = np.abs(v_af - v_bef) / v_bef
     if ite > max_ite:
-        raise RuntimeError('Did not find equilibrium.')
+        raise ValueError('Did not find equilibrium.')
 
 
 def minimize_dl(tbias, mb, fls, dl, len2003, glena, gdir, optimization):
@@ -39,12 +39,16 @@ def minimize_dl(tbias, mb, fls, dl, len2003, glena, gdir, optimization):
                            time_stepping='default',
                            glen_a=glena)
 
-    for _y in np.arange(150):
-        model.run_until(model.yr + 1)
     try:
         relic_run_until_equilibrium(model)
-    except (RuntimeError, ValueError):
+    except ValueError:
         pass
+    except FloatingPointError:
+        if optimization is True:
+            print('tbias of %.2f gave length: %.2f' % (tbias, model.length_m))
+            return len2003**2
+        else:
+            raise RuntimeError('This should never happen...')
 
     if optimization is True:
         dl_spinup = model.length_m - len2003
@@ -56,7 +60,7 @@ def minimize_dl(tbias, mb, fls, dl, len2003, glena, gdir, optimization):
         if glena is None:
             filesuffix = '_spinup'
         else:
-           filesuffix = '_spinup_%.3e' % glena
+            filesuffix = '_spinup_%.3e' % glena
 
         run_path = gdir.get_filepath('model_run',
                                      filesuffix=filesuffix,
@@ -123,7 +127,7 @@ def spinup_with_tbias(gdir, fls, dl, len2003, glena=None):
         print('Second optimization result:')
         print(opti2)
 
-        if opti2.fun < 100:
+        if np.sqrt(opti2.fun) < 100:
             opti = opti2
         else:
             raise RuntimeError('Optimization failed....')
