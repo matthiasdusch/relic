@@ -11,7 +11,8 @@ import logging
 log = logging.getLogger(__name__)
 
 
-def configure(workdir, glclist, glena_factor=1.5, baselineclimate='HISTALP'):
+def configure(workdir, glclist, glena_factor=1.5, baselineclimate='HISTALP',
+              y0=None, years=None):
     # Initialize OGGM
     cfg.initialize()
 
@@ -56,7 +57,7 @@ def configure(workdir, glclist, glena_factor=1.5, baselineclimate='HISTALP'):
         execute_entity_task(tasks.process_histalp_data, gdirs)
 
         cfg.PARAMS['baseline_climate'] = baselineclimate
-        execute_entity_task(histalp_annual_mean, gdirs)
+        execute_entity_task(histalp_annual_mean, gdirs, y0=y0, years=years)
 
         cfg.PARAMS['run_mb_calibration'] = True
         compute_ref_t_stars(gdirs)
@@ -69,7 +70,7 @@ def configure(workdir, glclist, glena_factor=1.5, baselineclimate='HISTALP'):
 
 
 @entity_task(log, writes=['climate_monthly', 'climate_info'])
-def histalp_annual_mean(gdir):
+def histalp_annual_mean(gdir, y0=None, years=None):
     """
     docstring
 
@@ -94,7 +95,17 @@ def histalp_annual_mean(gdir):
     if cfg.PARAMS['temp_use_local_gradient']:
         raise RuntimeError('Have to think about it')
 
-    meanpcp = cm.prcp.groupby('time.month').mean().copy()
+    if y0 is None:
+        meanpcp = cm.prcp.groupby('time.month').mean().copy()
+    else:
+        assert isinstance(y0, int)
+        sy0 = pd.to_datetime('%d' % y0)
+        if years is None:
+            meanpcp = cm.prcp.loc[sy0:].groupby('time.month').mean().copy()
+        else:
+            assert isinstance(years, int)
+            sy1 = pd.to_datetime('%d' % (y0+years))
+            meanpcp = cm.prcp.loc[sy0:sy1].groupby('time.month').mean().copy()
 
     for mo in np.arange(1, 13):
         prcp[time.month == mo] = meanpcp.sel(month=mo).values
