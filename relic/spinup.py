@@ -48,15 +48,16 @@ def minimize_dl(tbias, mb, fls, dl, len2003, glena, gdir, optimization):
         pass
     except FloatingPointError:
         if optimization is True:
-            log.info('tbias of %.2f gave length: %.2f' % (tbias,
-                                                          model.length_m))
+            log.info('(%s) tbias of %.2f gave length: %.2f' %
+                     (gdir.rgi_id, tbias, model.length_m))
             return len2003**2
         else:
             raise RuntimeError('This should never happen...')
     except RuntimeError as err:
         if (optimization is True) and\
            (err.args[0] == 'Glacier exceeds domain boundaries.'):
-            log.info('tbias of %.2f exceeds domain boundaries' % tbias)
+            log.info('(%s) tbias of %.2f exceeds domain boundaries' %
+                     (gdir.rgi_id, tbias))
             return len2003**2
         else:
             raise RuntimeError('This should never happen...')
@@ -124,7 +125,7 @@ def spinup_with_tbias(gdir, fls, dl, len2003, glena=None):
                                           )
 
     print('First optimization result:')
-    log.info(opti)
+    log.info('%s\n' % gdir.rgi_id, opti)
 
     if np.sqrt(opti.fun) > 100:
         # try again, a bit colder...
