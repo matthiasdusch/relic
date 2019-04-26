@@ -125,7 +125,7 @@ def spinup_with_tbias(gdir, fls, dl, len2003, glena=None):
                                           )
 
     print('First optimization result:')
-    log.info('%s\n' % gdir.rgi_id, opti)
+    log.info('%s\n%s' % (gdir.rgi_id, opti))
 
     if np.sqrt(opti.fun) > 100:
         # try again, a bit colder...
