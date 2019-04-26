@@ -147,7 +147,7 @@ def spinup_with_tbias(gdir, fls, dl, len2003, glena=None):
         for ol in optilist:
             if ol.fun < opti.fun:
                 opti = ol
-        log.info('%s optimzation did not work, continue with smallest error\n'
+        log.info('%s optim did not work, continue with smallest error\n%s'
                  % (gdir.rgi_id, opti))
 
     tbias = opti.x
