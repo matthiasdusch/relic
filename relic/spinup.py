@@ -137,7 +137,7 @@ def spinup_with_tbias(gdir, fls, dl, len2003, glena=None):
                                                options={'maxiter': 30}
                                               )
         print('Second optimization result:')
-        print(opti2)
+        log.info('Second try: %s\n%s' % (gdir.rgi_id, opti2))
 
         if np.sqrt(opti2.fun) < 100:
             opti = opti2
