@@ -116,13 +116,16 @@ def spinup_with_tbias(gdir, fls, dl, len2003, glena=None):
     mb = MultipleFlowlineMassBalance(gdir, fls=fls,
                                      mb_model_class=ConstantMassBalance)
 
-    for nr in [1, 2, 3]:
+    optilist = []
+    optisuccess = False
+
+    for nr in np.arange(1, 4):
 
         if nr == 1:
             br1 = fg
             br2 = fg-1
         else:
-            # opti_old = opti.copy()
+            optilist.append(opti)
             br1 = opti.x - 0.5
             br2 = opti.x - 1
 
@@ -137,9 +140,15 @@ def spinup_with_tbias(gdir, fls, dl, len2003, glena=None):
         log.info('%d. opti: %s\n%s' % (nr, gdir.rgi_id, opti))
 
         if np.sqrt(opti.fun) <= fls[-1].dx_meter:
+            optisuccess = True
             break
-        elif nr == 3:
-            raise RuntimeError('Optimization failed....')
+
+    if optisuccess is False:
+        for ol in optilist:
+            if ol.fun < opti.fun:
+                opti = ol
+        log.info('%s optimzation did not work, continue with smallest error\n'
+                 % (gdir.rgi_id, opti))
 
     tbias = opti.x
 
