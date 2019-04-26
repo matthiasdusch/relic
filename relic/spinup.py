@@ -116,38 +116,30 @@ def spinup_with_tbias(gdir, fls, dl, len2003, glena=None):
     mb = MultipleFlowlineMassBalance(gdir, fls=fls,
                                      mb_model_class=ConstantMassBalance)
 
-    opti = scipy.optimize.minimize_scalar(minimize_dl,
-                                          bracket=(fg, fg-1),
-                                          tol=1e-2,
-                                          args=(mb, fls, dl, len2003, glena,
-                                                gdir, True),
-                                          options={'maxiter': 30}
-                                          )
+    for nr in [1, 2, 3]:
 
-    print('First optimization result:')
-    log.info('%s\n%s' % (gdir.rgi_id, opti))
-
-    if np.sqrt(opti.fun) > 100:
-        # try again, a bit colder...
-        opti2 = scipy.optimize.minimize_scalar(minimize_dl,
-                                               bracket=(opti.x-0.5, opti.x-1),
-                                               tol=1e-2,
-                                               args=(mb, fls, dl, len2003, glena,
-                                                     gdir, True),
-                                               options={'maxiter': 30}
-                                              )
-        print('Second optimization result:')
-        log.info('Second try: %s\n%s' % (gdir.rgi_id, opti2))
-
-        if np.sqrt(opti2.fun) < 100:
-            opti = opti2
+        if nr == 1:
+            br1 = fg
+            br2 = fg-1
         else:
+            # opti_old = opti.copy()
+            br1 = opti.x - 0.5
+            br2 = opti.x - 1
+
+        opti = scipy.optimize.minimize_scalar(minimize_dl,
+                                              bracket=(br1, br2),
+                                              tol=1e-2,
+                                              args=(mb, fls, dl, len2003, glena,
+                                                    gdir, True),
+                                              options={'maxiter': 30}
+                                              )
+
+        log.info('%d. opti: %s\n%s' % (nr, gdir.rgi_id, opti))
+
+        if np.sqrt(opti.fun) <= fls[-1].dx_meter:
+            break
+        elif nr == 3:
             raise RuntimeError('Optimization failed....')
-
-    # delta = opti.fun
-    # just go with it and assert in the postprocessing
-
-    assert np.sqrt(opti.fun) < 100
 
     tbias = opti.x
 
