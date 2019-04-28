@@ -59,8 +59,8 @@ def configure(workdir, glclist, glena_factor=1.5, baselineclimate='HISTALP',
         cfg.PARAMS['baseline_climate'] = baselineclimate
         execute_entity_task(histalp_annual_mean, gdirs, y0=y0, years=years)
 
-        cfg.PARAMS['run_mb_calibration'] = True
-        compute_ref_t_stars(gdirs)
+        # cfg.PARAMS['run_mb_calibration'] = True
+        # compute_ref_t_stars(gdirs)
 
     execute_entity_task(tasks.local_t_star, gdirs)
     execute_entity_task(tasks.mu_star_calibration, gdirs)
