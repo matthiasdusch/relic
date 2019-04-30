@@ -50,6 +50,10 @@ def configure(workdir, glclist, glena_factor=1.5, baselineclimate='HISTALP',
     gdirs = workflow.init_glacier_regions(glclist, from_prepro_level=3)
 
     # climate
+    if baselineclimate == 'CRU':
+        cfg.PARAMS['prcp_scaling_factor'] = 2.5
+        cfg.PARAMS['temp_melt'] = -1.0
+
     if baselineclimate == 'HISTALP':
         cfg.PARAMS['baseline_climate'] = baselineclimate
         execute_entity_task(tasks.process_histalp_data, gdirs)
@@ -199,8 +203,8 @@ def annual_temperature_from_summer_temp(gdir, y0=1950, years=30):
     gdir.write_pickle(out, 'climate_info')
 
 
-def get_leclercq_observations():
-    meta_all, data_all = download_leclercq()
+def get_leclercq_observations(firstyear=None):
+    meta_all, data_all = download_leclercq(firstyear=firstyear)
     meta, data = select_my_glaciers(meta_all, data_all)
     meta['first'] = meta['first'].astype(int)
     data.columns = data.columns.astype(int)

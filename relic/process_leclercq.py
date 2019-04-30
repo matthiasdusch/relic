@@ -3,7 +3,7 @@ import urllib
 import numpy as np
 
 
-def download_leclercq():
+def download_leclercq(firstyear=None):
 
     # --- Download and read Leclercq Files ---
     leclercqhttp = 'https://folk.uio.no/paulwl/downloads/'
@@ -72,7 +72,13 @@ def download_leclercq():
     dfout.index.name = 'LID'
 
     for nr, glc in dfout.iterrows():
-        dfmeta.loc[nr, 'first'] = glc.dropna().index[0]
+
+        if firstyear is not None:
+            first = glc.dropna().index[glc.dropna().index >= firstyear][0]
+        else:
+            first = glc.dropna().index[0]
+
+        dfmeta.loc[nr, 'first'] = first
         dfout.loc[nr] -= glc.loc[dfmeta.loc[nr, 'first']]
         dfmeta.loc[nr, 'measurements'] = glc.dropna().size
 
