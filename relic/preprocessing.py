@@ -14,7 +14,7 @@ log = logging.getLogger(__name__)
 
 
 def configure(workdir, glclist, glena_factor=1.5, baselineclimate='HISTALP',
-              y0=None, years=None):
+              y0=None, years=None, pcpsf=None):
     # Initialize OGGM
     cfg.initialize()
 
@@ -54,33 +54,19 @@ def configure(workdir, glclist, glena_factor=1.5, baselineclimate='HISTALP',
         cfg.PARAMS['prcp_scaling_factor'] = 2.5
         cfg.PARAMS['temp_melt'] = -1.0
 
-    if baselineclimate == 'HISTALP':
-        cfg.PARAMS['baseline_climate'] = baselineclimate
-        execute_entity_task(tasks.process_histalp_data, gdirs)
-
-    if baselineclimate == 'HISTALP_ANNUAL_MEAN':
+    if 'HISTALP' in baselineclimate:
         cfg.PARAMS['baseline_climate'] = 'HISTALP'
         execute_entity_task(tasks.process_histalp_data, gdirs)
 
-        cfg.PARAMS['baseline_climate'] = baselineclimate
+        if 'PRCP_SF' in baselineclimate:
+            cfg.PARAMS['run_mb_calibration'] = True
+            cfg.PARAMS['prcp_scaling_factor'] = pcpsf
+            compute_ref_t_stars(gdirs)
+
+    if 'ANNUAL_PRCP' in baselineclimate:
         execute_entity_task(histalp_annual_mean, gdirs, y0=y0, years=years)
 
-        # cfg.PARAMS['run_mb_calibration'] = True
-        # compute_ref_t_stars(gdirs)
-
-    if baselineclimate == 'HISTALP_JJA_TEMP':
-        cfg.PARAMS['baseline_climate'] = 'HISTALP'
-        execute_entity_task(tasks.process_histalp_data, gdirs)
-
-        cfg.PARAMS['baseline_climate'] = baselineclimate
-        execute_entity_task(annual_temperature_from_summer_temp, gdirs)
-
-    if baselineclimate == 'HISTALP_JJA_TEMP_AND_ANNUAL_PCP':
-        cfg.PARAMS['baseline_climate'] = 'HISTALP'
-        execute_entity_task(tasks.process_histalp_data, gdirs)
-
-        cfg.PARAMS['baseline_climate'] = baselineclimate
-        execute_entity_task(histalp_annual_mean, gdirs, y0=y0, years=years)
+    if 'JJA_TEMP' in baselineclimate:
         execute_entity_task(annual_temperature_from_summer_temp, gdirs)
 
     execute_entity_task(tasks.local_t_star, gdirs)

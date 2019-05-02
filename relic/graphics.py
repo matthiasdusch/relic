@@ -7,6 +7,7 @@ import numpy as np
 import os
 
 from relic.postprocessing import calc_acdc
+from relic.preprocessing import get_leclercq_observations
 
 
 def visual_check_spinup(df, meta, tbias, pout, colname=None, cols=None):
@@ -105,3 +106,47 @@ def accum_error(spinup, df, meta, data, pout, colname=None, cols=None):
     fig.tight_layout()
     fn = os.path.join(pout, 'acdc_%s.png' % meta['name'].iloc[0])
     fig.savefig(fn)
+
+
+def plt_multiple_runs(runs, pout):
+
+    meta, data = get_leclercq_observations()
+
+    # get all glaciers
+    glcs = [gl['rgi_id'] for gl in list(runs[0].values())[0]]
+
+    for glid in glcs:
+        _meta = meta.loc[meta['RGI_ID'] == glid].copy()
+        _data = data.loc[_meta.index[0]].copy()
+
+        fig, ax = plt.subplots(figsize=[15, 8])
+        _data.plot(ax=ax, color='k', marker='.',
+                   label='Observed length change')
+
+        for run in runs:
+            rlist = list(run.values())[0]
+            rdic = [gl for gl in rlist if gl['rgi_id'] == glid][0]
+            rkey = list(run.keys())[0]
+
+            # tbias = rdic['tbias']
+
+            spin = (rdic['spinup'].loc[:] -
+                    rdic['spinup'].loc[0]).dropna().iloc[-1]
+
+            dl = spin + _meta['dL2003'].iloc[0]
+
+            # relative length change
+            hist = rdic['histalp'].loc[:] - rdic['histalp'].iloc[0] + dl
+
+            #ax.plot(hist, label='%s, %s = %.2f' % (rkey, 'tbias', tbias))
+            ax.plot(hist, label='%s' % rkey)
+
+        ax.set_title('%s %s' % (_meta['name'].iloc[0],
+                                _meta['RGI_ID'].iloc[0]))
+        ax.set_ylabel('delta length [m]')
+        ax.set_xlabel('year')
+        ax.legend()
+        fig.tight_layout()
+        fn = os.path.join(pout, 'histalp_%s.png' % _meta['name'].iloc[0])
+        fig.savefig(fn)
+
