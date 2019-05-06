@@ -14,7 +14,8 @@ log = logging.getLogger(__name__)
 
 
 def configure(workdir, glclist, glena_factor=1.5, baselineclimate='HISTALP',
-              y0=None, years=None, pcpsf=None):
+              annual_mean_prcp=False, jja_temp=False, prcp_sf=None,
+              y0=None, years=None):
     # Initialize OGGM
     cfg.initialize()
 
@@ -54,19 +55,19 @@ def configure(workdir, glclist, glena_factor=1.5, baselineclimate='HISTALP',
         cfg.PARAMS['prcp_scaling_factor'] = 2.5
         cfg.PARAMS['temp_melt'] = -1.0
 
-    if 'HISTALP' in baselineclimate:
-        cfg.PARAMS['baseline_climate'] = 'HISTALP'
+    if baselineclimate == 'HISTALP':
+        cfg.PARAMS['baseline_climate'] = baselineclimate
         execute_entity_task(tasks.process_histalp_data, gdirs)
 
-    if 'ANNUAL_PRCP' in baselineclimate:
+    if annual_mean_prcp is True:
         execute_entity_task(histalp_annual_mean, gdirs, y0=y0, years=years)
 
-    if 'JJA_TEMP' in baselineclimate:
+    if jja_temp is True:
         execute_entity_task(annual_temperature_from_summer_temp, gdirs)
 
-    if 'PRCP_SF' in baselineclimate:
+    if prcp_sf is not None:
         cfg.PARAMS['run_mb_calibration'] = True
-        cfg.PARAMS['prcp_scaling_factor'] = pcpsf
+        cfg.PARAMS['prcp_scaling_factor'] = prcp_sf
         compute_ref_t_stars(gdirs)
 
     execute_entity_task(tasks.local_t_star, gdirs)
