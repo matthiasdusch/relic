@@ -125,7 +125,10 @@ def plt_multiple_runs(runs, pout):
 
         for run in runs:
             rlist = list(run.values())[0]
-            rdic = [gl for gl in rlist if gl['rgi_id'] == glid][0]
+            try:
+                rdic = [gl for gl in rlist if gl['rgi_id'] == glid][0]
+            except IndexError:
+                continue
             rkey = list(run.keys())[0]
 
             # tbias = rdic['tbias']

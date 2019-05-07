@@ -271,5 +271,19 @@ def vary_precipitation_sf(gdirs, meta, obs, pcpsf=None):
     return rval_dict
 
 
+def vary_precipitation_gradient(gdirs, meta, obs, prcp_gradient=None):
 
+    if prcp_gradient is None:
+        # vary gradient between 0% and 100% per 1000m
+        prcp_gradient = np.arange(0, 1.1, 0.1)*1e-3
 
+    rval_dict = {}
+    for grad in prcp_gradient:
+        # actual spinup and histalp
+        cfg.PARAMS['prcp_gradient'] = grad
+        log.info('Precipitation gradient = %.1e' % grad)
+        rval_dict[grad] = execute_entity_task(simple_spinup_plus_histalp,
+                                              gdirs, meta=meta, obs=obs,
+                                              )
+
+    return rval_dict
