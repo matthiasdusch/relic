@@ -13,7 +13,7 @@ from oggm.core.climate import compute_ref_t_stars
 from oggm import entity_task
 from oggm.exceptions import InvalidParamsError
 
-from relic.spinup import spinup_with_tbias, minimize_dl
+from relic.spinup import spinup_with_tbias, minimize_dl, systematic_spinup
 
 # Module logger
 log = logging.getLogger(__name__)
@@ -171,7 +171,8 @@ def relic_from_climate_data(gdir, ys=None, ye=None, min_ys=None,
                             **kwargs)
 
 
-def simple_spinup_plus_histalp(gdir, meta=None, obs=None, mb_bias=None):
+def simple_spinup_plus_histalp(gdir, meta=None, obs=None, mb_bias=None,
+                               use_systematic_spinup=False):
 
     # select meta and obs
     meta = meta.loc[meta['RGI_ID'] == gdir.rgi_id].copy()
@@ -180,7 +181,10 @@ def simple_spinup_plus_histalp(gdir, meta=None, obs=None, mb_bias=None):
 
     try:
         # --------- SPIN IT UP ---------------
-        tbias = simple_spinup(gdir, meta)
+        if use_systematic_spinup:
+            tbias = systematic_spinup(gdir, meta)
+        else:
+            tbias = simple_spinup(gdir, meta)
 
         # --------- GET SPINUP STATE ---------------
         tmp_mod = FileModel(gdir.get_filepath('model_run',
@@ -271,7 +275,8 @@ def vary_precipitation_sf(gdirs, meta, obs, pcpsf=None):
     return rval_dict
 
 
-def vary_precipitation_gradient(gdirs, meta, obs, prcp_gradient=None):
+def vary_precipitation_gradient(gdirs, meta, obs, prcp_gradient=None,
+                                use_systematic_spinup=False):
 
     if prcp_gradient is None:
         # vary gradient between 0% and 100% per 1000m
@@ -284,6 +289,7 @@ def vary_precipitation_gradient(gdirs, meta, obs, prcp_gradient=None):
         log.info('Precipitation gradient = %.1e' % grad)
         rval_dict[grad] = execute_entity_task(simple_spinup_plus_histalp,
                                               gdirs, meta=meta, obs=obs,
+                                              use_systematic_spinup=use_systematic_spinup
                                               )
 
     return rval_dict

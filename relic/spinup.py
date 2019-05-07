@@ -156,3 +156,74 @@ def spinup_with_tbias(gdir, fls, dl, len2003, glena=None):
     minimize_dl(tbias, mb, fls, dl, len2003, glena, gdir, False)
 
     return tbias
+
+
+def systematic_spinup(gdir, meta, glena=None):
+    import numpy.polynomial.polynomial as poly
+
+    # --------- HOW SHALL WE SPIN ---------------
+
+    # how long are we at initialization
+    fls = gdir.read_pickle('model_flowlines')
+    len2003 = fls[-1].length_m
+    # how long shall we go? MINUS for positive length change!
+    dl = -meta['dL2003'].iloc[0]
+
+    # first tbias guess: Relative length change compared to todays length
+    fg = np.abs(dl/len2003)
+    # limit to reasonable first guesses
+    fg = np.clip(fg, 0, 2)
+    # force minus
+    fg *= -1
+
+    print('first guess: %.2f' % fg)
+
+    # mass balance model
+    mb = MultipleFlowlineMassBalance(gdir, fls=fls,
+                                     mb_model_class=ConstantMassBalance)
+
+    # values to test systematicall
+    totest = np.geomspace(fg, fg*3, 5)
+    totest = np.unique(np.round(np.append(totest, fg-(totest-fg)), 2))
+
+    rval = pd.DataFrame([], columns=['delta'], index=totest)
+
+    # first test
+    for tb in totest:
+
+        delta = minimize_dl(tb, mb, fls, dl, len2003, glena, gdir, True)
+        if delta == len2003**2:
+            delta = np.nan
+        rval.loc[tb, 'delta'] = delta
+
+    # we need at least some good runs
+    # TODO: don't assert but do more minimize_dl
+    assert len(rval.dropna()) > 4
+
+    # fit a polynom to the values we have
+    y = rval.dropna().delta.values
+    x = rval.dropna().index
+    x_new = np.arange(x.min()-1, x.max()+1, 0.01)
+    coef = poly.polyfit(x, y, 2)
+    fit2d = poly.polyval(x_new, coef)
+
+    # check if positive
+    assert fit2d[0] > 0
+    assert fit2d[-1] > 0
+
+    # check if minimim value is not at the border
+    assert np.argmin(fit2d) != 0
+    assert np.argmin(fit2d) != (len(fit2d)-1)
+
+    # tbias from polyfit
+    tbias = x_new[fit2d.argmin()]
+    delta = minimize_dl(tbias, mb, fls, dl, len2003, glena, gdir, True)
+    log.info('(%s) delta = %.2f' % (gdir.rgi_id, np.sqrt(delta)))
+
+    # oder direkt von rval
+    if delta == len2003**2:
+        tbias = rval.dropna().idxmin().iloc[0]
+
+    # --------- SPIN IT UP FOR REAL ---------------
+    minimize_dl(tbias, mb, fls, dl, len2003, glena, gdir, False)
+    return tbias
