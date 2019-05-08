@@ -65,7 +65,7 @@ def minimize_dl(tbias, mb, fls, dl, len2003, glena, gdir, optimization):
     if optimization is True:
         dl_spinup = model.length_m - len2003
         delta = (dl - dl_spinup)**2
-        print('tbias: %.2f  delta: %.4f' % (tbias, delta))
+        print('%s: tbias: %.2f  delta: %.4f' % (gdir.rgi_id, tbias, delta))
         return delta
     else:
 
@@ -218,18 +218,20 @@ def systematic_spinup(gdir, meta, glena=None):
         # if cmin left or right of values only test there
         if np.sum(rval.index > cmin) == 0:
             totest = np.round(np.linspace(cmin, cmin+0.5, 5)[1:], 2)
-            break
+            continue
         if np.sum(rval.index < cmin) == 0:
             totest = np.round(np.linspace(cmin, cmin-0.5, 5)[1:], 2)
-            break
+            continue
 
         # if our minimum is between two values, test there
         idx = np.where(cmin == rval.index)[0][0]
-        totest = np.unique(np.round(np.linspace(rval['delta'].iloc[idx-1],
-                                                rval['delta'].iloc[idx+1], 5),
+        totest = np.unique(np.round(np.linspace(rval.index[idx-1],
+                                                rval.index[idx+1], 5),
                                     2))
         # if this is to small, we are on the wrong track, try a polyfit
         if len(totest) <= 2:
+            log.info('SPINUP (%s): USing polyfit!' %
+                     gdir.rgi_id)
             y = rval.dropna().delta.values
             x = rval.dropna().index
             x_new = np.arange(x.min()-1, x.max()+1, 0.01)
@@ -245,6 +247,10 @@ def systematic_spinup(gdir, meta, glena=None):
             totest = np.geomspace(pmin, pmin*3, 5)
             totest = np.unique(np.round(np.append(totest, pmin-(totest-pmin)),
                                         2))
+
+        # limit to some values from experience
+        totest = np.unique(np.clip(totest, -4, 2))
+        totest = totest[~np.isnan(totest)]
 
         if counter == 30:
             log.info('SPINUP ERROR: (%s) maximum counter reached!' %
