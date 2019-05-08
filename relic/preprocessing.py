@@ -50,6 +50,8 @@ def configure(workdir, glclist, glena_factor=1.5, baselineclimate='HISTALP',
 
     gdirs = workflow.init_glacier_regions(glclist, from_prepro_level=3)
 
+    cfg.PARAMS['prcp_gradient'] = 0
+
     # climate
     if baselineclimate == 'CRU':
         cfg.PARAMS['prcp_scaling_factor'] = 2.5

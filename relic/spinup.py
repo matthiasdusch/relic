@@ -233,8 +233,8 @@ def systematic_spinup(gdir, meta, glena=None):
                                     2))
         totest = totest[~np.isin(totest, rval.index)]
 
-        # if we get anything here, try a polyfit
-        if len(totest) == 0 :
+        # if we get nothing here, try a polyfit
+        if len(totest) == 0:
             log.info('SPINUP (%s): USing polyfit!' %
                      gdir.rgi_id)
             y = rval.dropna().delta.values
@@ -252,6 +252,7 @@ def systematic_spinup(gdir, meta, glena=None):
             totest = np.geomspace(pmin, pmin*3, 5)
             totest = np.unique(np.round(np.append(totest, pmin-(totest-pmin)),
                                         2))
+            counter += 1
 
         # limit to some values from experience
         totest = np.unique(np.clip(totest, -4, 2))
@@ -270,7 +271,7 @@ def systematic_spinup(gdir, meta, glena=None):
                 totest = []
                 counter += 1
 
-        if counter == 30:
+        if counter == 50:
             log.info('SPINUP ERROR: (%s) maximum counter reached!' %
                      gdir.rgi_id)
             break
