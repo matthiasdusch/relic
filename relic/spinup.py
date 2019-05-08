@@ -183,11 +183,112 @@ def systematic_spinup(gdir, meta, glena=None):
                                      mb_model_class=ConstantMassBalance)
 
     # values to test systematicall
-    totest = np.geomspace(fg, fg*3, 5)
+    totest = np.geomspace(fg, fg*3, 4)
     totest = np.unique(np.round(np.append(totest, fg-(totest-fg)), 2))
+    totest = np.clip(totest, -3, 1)
 
     rval = pd.DataFrame([], columns=['delta'])
 
+    counter = 0
+
+    found_fit = False
+    left = 1
+    right = 1
+
+    while True:
+        for tb in totest:
+            delta = minimize_dl(tb, mb, fls, dl, len2003, glena, gdir, True)
+            counter += 1
+            if delta == len2003**2:
+                delta = np.nan
+            rval.loc[tb, 'delta'] = delta
+            if np.sqrt(delta) < fls[-1].dx_meter:
+                found_fit = True
+                break
+        if found_fit is True:
+            break
+
+        rval = rval.astype(float)
+        rval.sort_index(inplace=True)
+
+        # no fit so far, get new tbias to test:
+        # current minima
+        cmin = rval['delta'].idxmin()
+
+        # if cmin left or right of values only test there
+        if np.sum(rval.index > cmin) == 0:
+            totest = np.round(np.linspace(cmin, cmin+0.5, 5)[1:], 2)
+            break
+        if np.sum(rval.index < cmin) == 0:
+            totest = np.round(np.linspace(cmin, cmin-0.5, 5)[1:], 2)
+            break
+
+        # if our minimum is between two values, test there
+        idx = np.where(cmin == rval.index)[0][0]
+        totest = np.unique(np.round(np.linspace(rval['delta'].iloc[idx-1],
+                                                rval['delta'].iloc[idx+1], 5),
+                                    2))
+        # if this is to small, we are on the wrong track, try a polyfit
+        if len(totest) <= 2:
+            y = rval.dropna().delta.values
+            x = rval.dropna().index
+            x_new = np.arange(x.min()-1, x.max()+1, 0.01)
+            coef = poly.polyfit(x, y, 2)
+            fit2d = poly.polyval(x_new, coef)
+
+            if (fit2d < 0).any():
+                log.info('SPINUP ERROR: (%s) negative fit should not happen!' %
+                         gdir.rgi_id)
+                fit2d = np.abs(fit2d)
+
+            pmin = x_new[fit2d.argmin()]
+            totest = np.geomspace(pmin, pmin*3, 5)
+            totest = np.unique(np.round(np.append(totest, pmin-(totest-pmin)),
+                                        2))
+
+        if counter == 30:
+            log.info('SPINUP ERROR: (%s) maximum counter reached!' %
+                     gdir.rgi_id)
+            break
+
+    """
+        # we want at least 2 values left/right of the current minima
+        if np.sum(rval.index > cmin) < 2:
+            totest = np.linspace(cmin, cmin+right, 5)[1:]
+            right += 1  # to hopefully avoid endless loops
+            continue
+        if np.sum(rval.index < cmin) < 2:
+            totest = np.linspace(cmin, cmin-left, 5)[1:]
+            left += 1
+            continue
+        left = 1
+        right = 1
+
+        # if we have enough values, let's try and fit a polynomial
+
+        y = rval.dropna().delta.values
+        x = rval.dropna().index
+        x_new = np.arange(x.min()-1, x.max()+1, 0.01)
+        coef = poly.polyfit(x, y, 2)
+        fit2d = poly.polyval(x_new, coef)
+
+        if (fit2d < 0).any():
+            log.info('SPINUP ERROR: (%s) negative fit should not happen!' %
+                     gdir.rgi_id)
+            fit2d = np.abs(fit2d)
+
+        pmin = x_new[fit2d.argmin()]
+
+        totest = np.geomspace(pmin, pmin*3, 5)
+        totest = np.unique(np.round(np.append(totest, pmin-(totest-pmin)), 2))
+
+        if counter == 30:
+            log.info('SPINUP ERROR: (%s) maximum counter reached!' %
+                     gdir.rgi_id)
+            break
+
+    """
+    """
     # first test
     for tb in totest:
 
@@ -249,6 +350,16 @@ def systematic_spinup(gdir, meta, glena=None):
         log.info('SPINUP ERROR: (%s) minimum fit spinup failed!' %
                  gdir.rgi_id)
         tbias = rval.dropna().idxmin().iloc[0]
+    """
+
+    # use minimal delta from rval
+    tbias = rval.dropna().idxmin().iloc[0]
+    delta = np.sqrt(rval.loc[tbias, 'delta'])
+    log.info('(%s) delta = %.2f (counter=%d)' % (gdir.rgi_id, delta, counter))
+
+    if delta > fls[-1].dx_meter:
+        log.info('SPINUP ERROR: (%s) minimum fit spinup failed!' %
+                 gdir.rgi_id)
 
     # --------- SPIN IT UP FOR REAL ---------------
     minimize_dl(tbias, mb, fls, dl, len2003, glena, gdir, False)
