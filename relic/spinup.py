@@ -196,6 +196,9 @@ def systematic_spinup(gdir, meta, glena=None):
     right = 1
 
     while True:
+        # dont do anything twice
+        totest = totest[~np.isin(totest, rval.index)]
+
         for tb in totest:
             delta = minimize_dl(tb, mb, fls, dl, len2003, glena, gdir, True)
             counter += 1
@@ -228,6 +231,8 @@ def systematic_spinup(gdir, meta, glena=None):
         totest = np.unique(np.round(np.linspace(rval.index[idx-1],
                                                 rval.index[idx+1], 5),
                                     2))
+        totest = totest[~np.isin(totest, rval.index)]
+
         # if this is to small, we are on the wrong track, try a polyfit
         if len(totest) <= 2:
             log.info('SPINUP (%s): USing polyfit!' %
@@ -251,6 +256,19 @@ def systematic_spinup(gdir, meta, glena=None):
         # limit to some values from experience
         totest = np.unique(np.clip(totest, -4, 2))
         totest = totest[~np.isnan(totest)]
+        totest = totest[~np.isin(totest, rval.index)]
+
+        if len(totest) == 0:
+            # we need to do something
+
+            try:
+                totest = np.linspace(rval.dropna().index[0],
+                                     rval.dropna().index[-1], 10)
+                totest = np.unique(np.round(totest, 2))
+                counter += 1
+            except IndexError:
+                totest = []
+                counter += 1
 
         if counter == 30:
             log.info('SPINUP ERROR: (%s) maximum counter reached!' %
