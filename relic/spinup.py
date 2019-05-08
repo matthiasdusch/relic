@@ -186,7 +186,7 @@ def systematic_spinup(gdir, meta, glena=None):
     totest = np.geomspace(fg, fg*3, 5)
     totest = np.unique(np.round(np.append(totest, fg-(totest-fg)), 2))
 
-    rval = pd.DataFrame([], columns=['delta'], index=totest)
+    rval = pd.DataFrame([], columns=['delta'])
 
     # first test
     for tb in totest:
@@ -194,11 +194,32 @@ def systematic_spinup(gdir, meta, glena=None):
         delta = minimize_dl(tb, mb, fls, dl, len2003, glena, gdir, True)
         if delta == len2003**2:
             delta = np.nan
-        rval.loc[tb, 'delta'] = delta
+        else:
+            rval.loc[tb, 'delta'] = delta
+
+    totest = np.array([])
+    # current minima
+    cmin = rval.idxmin().iloc[0]
+
+    # we want at least 2 values left/right of the current minima
+    if np.sum(rval.index > cmin) < 2:
+        totest = np.append(totest, np.linspace(cmin, cmin+1, 5)[1:])
+    if np.sum(rval.index < cmin) < 2:
+        totest = np.append(totest, np.linspace(cmin, cmin-1, 5)[1:])
+
+    # second test
+    for tb in totest:
+
+        delta = minimize_dl(tb, mb, fls, dl, len2003, glena, gdir, True)
+        if delta == len2003**2:
+            delta = np.nan
+        else:
+            rval.loc[tb, 'delta'] = delta
 
     # we need at least some good runs
-    # TODO: don't assert but do more minimize_dl
-    assert len(rval.dropna()) > 4
+    if len(rval.dropna()) < 4:
+        log.info('SPINUP ERROR: (%s) only %d good spinups!' %
+                 (gdir.rgi_id, len(rval.dropna())))
 
     # fit a polynom to the values we have
     y = rval.dropna().delta.values
@@ -208,12 +229,15 @@ def systematic_spinup(gdir, meta, glena=None):
     fit2d = poly.polyval(x_new, coef)
 
     # check if positive
-    assert fit2d[0] > 0
-    assert fit2d[-1] > 0
+    if fit2d[0] < 0:
+        log.info('SPINUP ERROR: (%s) negative fit, that should not happen!' %
+                 gdir.rgi_id)
+        fit2d = np.abs(fit2d)
 
     # check if minimim value is not at the border
-    assert np.argmin(fit2d) != 0
-    assert np.argmin(fit2d) != (len(fit2d)-1)
+    if (np.argmin(fit2d) == 0) | (np.argmin(fit2d) == (len(fit2d)-1)):
+        log.info('SPINUP ERROR: (%s) minimum fit at the border!' %
+                 gdir.rgi_id)
 
     # tbias from polyfit
     tbias = x_new[fit2d.argmin()]
@@ -222,6 +246,8 @@ def systematic_spinup(gdir, meta, glena=None):
 
     # oder direkt von rval
     if delta == len2003**2:
+        log.info('SPINUP ERROR: (%s) minimum fit spinup failed!' %
+                 gdir.rgi_id)
         tbias = rval.dropna().idxmin().iloc[0]
 
     # --------- SPIN IT UP FOR REAL ---------------
