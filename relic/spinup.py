@@ -385,6 +385,7 @@ def systematic_spinup(gdir, meta, glena=None):
     """
 
     # use minimal delta from rval
+    rval = rval.astype(float)
     tbias = rval.dropna().idxmin().iloc[0]
     delta = np.sqrt(rval.loc[tbias, 'delta'])
     log.info('(%s) delta = %.2f (counter=%d)' % (gdir.rgi_id, delta, counter))
