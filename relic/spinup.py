@@ -271,7 +271,7 @@ def systematic_spinup(gdir, meta, glena=None):
                 totest = []
                 counter += 1
 
-        if counter == 50:
+        if counter > 50:
             log.info('SPINUP ERROR: (%s) maximum counter reached!' %
                      gdir.rgi_id)
             break
