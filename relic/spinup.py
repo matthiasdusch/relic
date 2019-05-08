@@ -219,9 +219,11 @@ def systematic_spinup(gdir, meta, glena=None):
         cmin = rval['delta'].idxmin()
 
         if np.isnan(cmin):
+            log.info('SPINUP ERROR: (%s) got all nans!' % gdir.rgi_id)
             fg -= 0.5
-            cmin = fg
-            counter += 1
+            totest = np.geomspace(fg, fg*3, 4)
+            totest = np.unique(np.round(np.append(totest, fg-(totest-fg)), 2))
+            continue
 
         # if cmin left or right of values only test there
         if np.sum(rval.index > cmin) == 0:
