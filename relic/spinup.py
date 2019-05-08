@@ -233,8 +233,8 @@ def systematic_spinup(gdir, meta, glena=None):
                                     2))
         totest = totest[~np.isin(totest, rval.index)]
 
-        # if this is to small, we are on the wrong track, try a polyfit
-        if len(totest) <= 2:
+        # if we get anything here, try a polyfit
+        if len(totest) == 0 :
             log.info('SPINUP (%s): USing polyfit!' %
                      gdir.rgi_id)
             y = rval.dropna().delta.values
@@ -243,7 +243,7 @@ def systematic_spinup(gdir, meta, glena=None):
             coef = poly.polyfit(x, y, 2)
             fit2d = poly.polyval(x_new, coef)
 
-            if (fit2d < 0).any():
+            if fit2d[0] < 0:
                 log.info('SPINUP ERROR: (%s) negative fit should not happen!' %
                          gdir.rgi_id)
                 fit2d = np.abs(fit2d)
