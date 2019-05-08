@@ -243,12 +243,13 @@ def vary_mass_balance_bias(gdirs, meta, obs, mbbias=None):
     return rval_dict
 
 
-def vary_precipitation_sf(gdirs, meta, obs, pcpsf=None):
+def vary_precipitation_sf(gdirs, meta, obs, pcpsf=None,
+                          use_systematic_spinup=False):
 
     cfg.PARAMS['run_mb_calibration'] = True
 
     if pcpsf is None:
-        pcpsf = np.arange(0.25, 5.25, 0.25)
+        pcpsf = np.arange(0.25, 3.25, 0.25)
 
     rval_dict = {}
 
@@ -270,8 +271,9 @@ def vary_precipitation_sf(gdirs, meta, obs, pcpsf=None):
 
         # actual spinup and histalp
         rval_dict[sf] = execute_entity_task(simple_spinup_plus_histalp,
-                                            gdirs,
-                                            meta=meta, obs=obs)
+                                            gdirs, meta=meta, obs=obs,
+                                            use_systematic_spinup=use_systematic_spinup
+                                            )
     return rval_dict
 
 
