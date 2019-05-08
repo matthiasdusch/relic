@@ -218,6 +218,11 @@ def systematic_spinup(gdir, meta, glena=None):
         # current minima
         cmin = rval['delta'].idxmin()
 
+        if np.isnan(cmin):
+            fg -= 0.5
+            cmin = fg
+            counter += 1
+
         # if cmin left or right of values only test there
         if np.sum(rval.index > cmin) == 0:
             totest = np.round(np.linspace(cmin, cmin+0.5, 5)[1:], 2)
@@ -271,7 +276,7 @@ def systematic_spinup(gdir, meta, glena=None):
                 totest = []
                 counter += 1
 
-        if counter > 50:
+        if counter > 40:
             log.info('SPINUP ERROR: (%s) maximum counter reached!' %
                      gdir.rgi_id)
             break

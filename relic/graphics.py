@@ -46,7 +46,8 @@ def visual_check_spinup(df, meta, tbias, pout, colname=None, cols=None):
     fig.savefig(fn)
 
 
-def plt_histalp_runs(spinup, df, meta, data, pout, colname=None, cols=None):
+def plt_histalp_runs(spinup, df, meta, data, pout, colname=None, cols=None,
+                     y_roll=1):
     if len(df) == 0:
         return
     assert len(meta) == 1
@@ -54,7 +55,7 @@ def plt_histalp_runs(spinup, df, meta, data, pout, colname=None, cols=None):
     if cols is None:
         cols = df.columns.levels[0]
     fig, ax = plt.subplots(figsize=[15, 8])
-    data.plot(ax=ax, color='k', marker='.', label='Observed length change')
+    data.plot(ax=ax, color='k', marker='o', label='Observed length change')
 
     for col in cols:
         if isinstance(col, tuple) and (len(col) == 1):
@@ -69,10 +70,12 @@ def plt_histalp_runs(spinup, df, meta, data, pout, colname=None, cols=None):
         # relative length change
         hist = df.loc[:, col] - df.loc[:, col].iloc[0] + dl
 
-        ax.plot(hist, label='OGGM %s = %.2e' % (colname, col))
+        ax.plot(hist.rolling(y_roll).mean(),
+                label='%s = %.2e' % (colname, col), linewidth=3)
     ax.set_title('%s %s' % (meta['name'].iloc[0], meta['RGI_ID'].iloc[0]))
     ax.set_ylabel('delta length [m]')
     ax.set_xlabel('year')
+    ax.grid(True)
     ax.legend()
     fig.tight_layout()
     fn = os.path.join(pout, 'histalp_%s.png' % meta['name'].iloc[0])
@@ -108,7 +111,7 @@ def accum_error(spinup, df, meta, data, pout, colname=None, cols=None):
     fig.savefig(fn)
 
 
-def plt_multiple_runs(runs, pout):
+def plt_multiple_runs(runs, pout, y_roll=1):
 
     meta, data = get_leclercq_observations()
 
@@ -120,7 +123,7 @@ def plt_multiple_runs(runs, pout):
         _data = data.loc[_meta.index[0]].copy()
 
         fig, ax = plt.subplots(figsize=[15, 8])
-        _data.plot(ax=ax, color='k', marker='.',
+        _data.plot(ax=ax, color='k', marker='o',
                    label='Observed length change')
 
         for run in runs:
@@ -142,12 +145,14 @@ def plt_multiple_runs(runs, pout):
             hist = rdic['histalp'].loc[:] - rdic['histalp'].iloc[0] + dl
 
             #ax.plot(hist, label='%s, %s = %.2f' % (rkey, 'tbias', tbias))
-            ax.plot(hist, label='%s' % rkey)
+            ax.plot(hist.rolling(y_roll).mean(), label='%s' % rkey,
+                    linewidth=3)
 
         ax.set_title('%s %s' % (_meta['name'].iloc[0],
                                 _meta['RGI_ID'].iloc[0]))
         ax.set_ylabel('delta length [m]')
         ax.set_xlabel('year')
+        ax.grid(True)
         ax.legend()
         fig.tight_layout()
         fn = os.path.join(pout, 'histalp_%s.png' % _meta['name'].iloc[0])
