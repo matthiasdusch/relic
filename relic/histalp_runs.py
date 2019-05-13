@@ -257,7 +257,7 @@ def vary_precipitation_sf(gdirs, meta, obs, pcpsf=None,
     cfg.PARAMS['run_mb_calibration'] = True
 
     if pcpsf is None:
-        pcpsf = np.arange(0.25, 3.25, 0.25)
+        pcpsf = np.arange(0.5, 3.25, 0.25)
 
     rval_dict = {}
 
@@ -279,9 +279,6 @@ def vary_precipitation_sf(gdirs, meta, obs, pcpsf=None,
             execute_entity_task(task, gdirs)
 
         # actual spinup and histalp
-        _ = simple_spinup_plus_histalp(gdirs[0], meta=meta, obs=obs,
-                                       use_systematic_spinup=use_systematic_spinup
-                                       )
         rval_dict[sf] = execute_entity_task(simple_spinup_plus_histalp,
                                             gdirs, meta=meta, obs=obs,
                                             use_systematic_spinup=use_systematic_spinup
