@@ -63,6 +63,11 @@ def minimize_dl(tbias, mb, fls, dl, len2003, glena, gdir, optimization):
             raise RuntimeError('This should never happen...')
 
     if optimization is True:
+        if model.length_m < fls[-1].dx_meter:
+            log.info('(%s) tbias of %.2f gave length: %.2f' %
+                     (gdir.rgi_id, tbias, model.length_m))
+            return len2003**2
+
         dl_spinup = model.length_m - len2003
         delta = (dl - dl_spinup)**2
         print('%s: tbias: %.2f  delta: %.4f' % (gdir.rgi_id, tbias, delta))
@@ -190,10 +195,9 @@ def systematic_spinup(gdir, meta, glena=None):
     rval = pd.DataFrame([], columns=['delta'])
 
     counter = 0
+    maxcount = 40
 
     found_fit = False
-    left = 1
-    right = 1
 
     while True:
         # dont do anything twice
@@ -223,7 +227,12 @@ def systematic_spinup(gdir, meta, glena=None):
             fg -= 0.5
             totest = np.geomspace(fg, fg*3, 4)
             totest = np.unique(np.round(np.append(totest, fg-(totest-fg)), 2))
-            continue
+            if counter > maxcount:
+                log.info('SPINUP ERROR: (%s) maximum counter reached!' %
+                         gdir.rgi_id)
+                break
+            else:
+                continue
 
         # if cmin left or right of values only test there
         if np.sum(rval.index > cmin) == 0:
@@ -278,7 +287,7 @@ def systematic_spinup(gdir, meta, glena=None):
                 totest = []
                 counter += 1
 
-        if counter > 40:
+        if counter > maxcount:
             log.info('SPINUP ERROR: (%s) maximum counter reached!' %
                      gdir.rgi_id)
             break
@@ -386,6 +395,10 @@ def systematic_spinup(gdir, meta, glena=None):
 
     # use minimal delta from rval
     rval = rval.astype(float)
+
+    if rval['delta'].isna().all():
+        return -999
+
     tbias = rval.dropna().idxmin().iloc[0]
     delta = np.sqrt(rval.loc[tbias, 'delta'])
     log.info('(%s) delta = %.2f (counter=%d)' % (gdir.rgi_id, delta, counter))

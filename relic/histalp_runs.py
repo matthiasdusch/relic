@@ -183,6 +183,14 @@ def simple_spinup_plus_histalp(gdir, meta=None, obs=None, mb_bias=None,
         # --------- SPIN IT UP ---------------
         if use_systematic_spinup:
             tbias = systematic_spinup(gdir, meta)
+
+            if tbias == -999:
+
+                rval = {'rgi_id': gdir.rgi_id, 'name': meta['name'].iloc[0],
+                        'histalp': np.nan,
+                        'spinup': np.nan,
+                        'tbias': np.nan, 'tmean': np.nan, 'pmean': np.nan}
+                return rval
         else:
             tbias = simple_spinup(gdir, meta)
 
@@ -256,6 +264,7 @@ def vary_precipitation_sf(gdirs, meta, obs, pcpsf=None,
     for sf in pcpsf:
 
         cfg.PARAMS['prcp_scaling_factor'] = sf
+        log.info('Precipitation sf = %.1e' % sf)
 
         # finish OGGM tasks
         compute_ref_t_stars(gdirs)
@@ -270,6 +279,9 @@ def vary_precipitation_sf(gdirs, meta, obs, pcpsf=None,
             execute_entity_task(task, gdirs)
 
         # actual spinup and histalp
+        _ = simple_spinup_plus_histalp(gdirs[0], meta=meta, obs=obs,
+                                       use_systematic_spinup=use_systematic_spinup
+                                       )
         rval_dict[sf] = execute_entity_task(simple_spinup_plus_histalp,
                                             gdirs, meta=meta, obs=obs,
                                             use_systematic_spinup=use_systematic_spinup
