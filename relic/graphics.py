@@ -118,6 +118,9 @@ def plt_multiple_runs(runs, pout, y_roll=1):
     # get all glaciers
     glcs = [gl['rgi_id'] for gl in list(runs[0].values())[0]]
 
+    # linestyles
+    ls = ['-', '--', ':', '-.']
+
     for glid in glcs:
         _meta = meta.loc[meta['RGI_ID'] == glid].copy()
         _data = data.loc[_meta.index[0]].copy()
@@ -126,7 +129,7 @@ def plt_multiple_runs(runs, pout, y_roll=1):
         _data.plot(ax=ax, color='k', marker='o',
                    label='Observed length change')
 
-        for run in runs:
+        for nr, run in enumerate(runs):
             rlist = list(run.values())[0]
             try:
                 rdic = [gl for gl in rlist if gl['rgi_id'] == glid][0]

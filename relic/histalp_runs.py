@@ -291,7 +291,7 @@ def vary_precipitation_gradient(gdirs, meta, obs, prcp_gradient=None,
 
     if prcp_gradient is None:
         # vary gradient between 0% and 100% per 1000m
-        prcp_gradient = np.arange(0, 1.1, 0.1)*1e-3
+        prcp_gradient = np.nan  # np.arange(0, 1.1, 0.1)*1e-3
 
     rval_dict = {}
     for grad in prcp_gradient:

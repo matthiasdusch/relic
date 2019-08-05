@@ -129,6 +129,7 @@ def select_my_glaciers(meta, data):
     meta.loc[4, 'RGI_ID'] = 'RGI60-11.02704'  # Allalin
     meta.loc[176, 'RGI_ID'] = 'RGI60-11.02755'  # Tsidjore Nouve
     meta.loc[171, 'RGI_ID'] = 'RGI60-11.02740'  # Trient
+    meta.loc[115, 'RGI_ID'] = 'RGI60-11.01946'  # Morteratsch
 
     meta = meta.loc[meta.loc[:, 'RGI_ID'].dropna().index]
     data = data.loc[meta.index]
