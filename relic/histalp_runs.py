@@ -14,6 +14,7 @@ from oggm import entity_task
 from oggm.exceptions import InvalidParamsError
 
 from relic.spinup import spinup_with_tbias, minimize_dl, systematic_spinup
+from relic.postprocessing import relative_length_change, mae, r2
 
 # Module logger
 log = logging.getLogger(__name__)
@@ -179,49 +180,52 @@ def simple_spinup_plus_histalp(gdir, meta=None, obs=None, mb_bias=None,
     obs = obs.loc[meta.index].iloc[0].copy()
     obs_ye = obs.dropna().index[-1]
 
-    try:
-        # --------- SPIN IT UP ---------------
-        if use_systematic_spinup:
-            tbias = systematic_spinup(gdir, meta)
+    # --------- SPIN IT UP ---------------
+    if use_systematic_spinup:
+        tbias = systematic_spinup(gdir, meta)
 
-            if tbias == -999:
+        if tbias == -999:
 
-                rval = {'rgi_id': gdir.rgi_id, 'name': meta['name'].iloc[0],
-                        'histalp': np.nan,
-                        'spinup': np.nan,
-                        'tbias': np.nan, 'tmean': np.nan, 'pmean': np.nan}
-                return rval
-        else:
-            tbias = simple_spinup(gdir, meta)
+            rval = {'rgi_id': gdir.rgi_id, 'name': meta['name'].iloc[0],
+                    'histalp': np.nan,
+                    'spinup': np.nan,
+                    'tbias': np.nan, 'tmean': np.nan, 'pmean': np.nan}
+            return rval
+    else:
+        tbias = simple_spinup(gdir, meta)
 
-        # --------- GET SPINUP STATE ---------------
-        tmp_mod = FileModel(gdir.get_filepath('model_run',
-                                              filesuffix='_spinup'))
-        tmp_mod.run_until(tmp_mod.last_yr)
+    # --------- GET SPINUP STATE ---------------
+    tmp_mod = FileModel(gdir.get_filepath('model_run',
+                                          filesuffix='_spinup'))
+    tmp_mod.run_until(tmp_mod.last_yr)
 
-        # --------- HIST IT DOWN ---------------
-        relic_from_climate_data(gdir, ys=meta['first'].iloc[0], ye=obs_ye,
-                                init_model_fls=tmp_mod.fls,
-                                output_filesuffix='_histalp',
-                                mass_balance_bias=mb_bias)
+    # --------- HIST IT DOWN ---------------
+    relic_from_climate_data(gdir, ys=meta['first'].iloc[0], ye=obs_ye,
+                            init_model_fls=tmp_mod.fls,
+                            output_filesuffix='_histalp',
+                            mass_balance_bias=mb_bias)
 
-        ds1 = xr.open_dataset(gdir.get_filepath('model_diagnostics',
-                                                filesuffix='_histalp'))
-        ds2 = xr.open_dataset(gdir.get_filepath('model_diagnostics',
-                                                filesuffix='_spinup'))
-        # store mean temperature and precipitation
-        yindex = np.arange(meta['first'].iloc[0], obs_ye+1)
-        cm = xr.open_dataset(gdir.get_filepath('climate_monthly'))
-        tmean = cm.temp.groupby('time.year').mean().loc[yindex].to_pandas()
-        pmean = cm.prcp.groupby('time.year').mean().loc[yindex].to_pandas()
+    ds1 = xr.open_dataset(gdir.get_filepath('model_diagnostics',
+                                            filesuffix='_histalp'))
+    ds2 = xr.open_dataset(gdir.get_filepath('model_diagnostics',
+                                            filesuffix='_spinup'))
+    # store mean temperature and precipitation
+    yindex = np.arange(meta['first'].iloc[0], obs_ye+1)
+    cm = xr.open_dataset(gdir.get_filepath('climate_monthly'))
+    tmean = cm.temp.groupby('time.year').mean().loc[yindex].to_pandas()
+    pmean = cm.prcp.groupby('time.year').mean().loc[yindex].to_pandas()
 
-        rval = {'rgi_id': gdir.rgi_id, 'name': meta['name'].iloc[0],
-                'histalp': ds1.length_m.to_dataframe()['length_m'],
-                'spinup': ds2.length_m.to_dataframe()['length_m'],
-                'tbias': tbias, 'tmean': tmean, 'pmean': pmean}
-    except BrokenPipeError:
-        print('dummyerror, i wanna see it')
-        pass
+    rval = {'rgi_id': gdir.rgi_id, 'name': meta['name'].iloc[0],
+            'histalp': ds1.length_m.to_dataframe()['length_m'],
+            'spinup': ds2.length_m.to_dataframe()['length_m'],
+            'tbias': tbias, 'tmean': tmean, 'pmean': pmean}
+
+    # relative length change
+    rval['rel_dl'] = relative_length_change(meta, rval['spinup'],
+                                            rval['histalp'])
+
+    rval['mae'] = mae(obs, rval['rel_dl'])
+    rval['r2'] = r2(obs, rval['histalp'])
     """
     except (FloatingPointError, RuntimeError) as err:
 

@@ -28,7 +28,7 @@ def download_leclercq(firstyear=None):
         icol = lq_rec.columns.get_loc(glc)
         # actual data
         year = np.array(lq_rec.iloc[1:, icol].dropna(), dtype=int)
-        dL = np.array(lq_rec.iloc[1:, icol+1].dropna(), dtype=int)
+        dL = np.array(lq_rec.iloc[1:, icol+1].dropna(), dtype=float)
         src = np.array(lq_rec.iloc[1:, icol+2].dropna(), dtype=int)
 
         # ---- 2. get Leclercq glacier info
@@ -61,7 +61,7 @@ def download_leclercq(firstyear=None):
 
         meta.append(pd.DataFrame([[infoname, LON, LAT]], index=[LID],
                                  columns=['name', 'lon', 'lat']))
-        tmp = pd.DataFrame([], index=[LID], columns=y1850)
+        tmp = pd.DataFrame([], index=[LID], columns=y1850, dtype=float)
         tmp[year[year >= 1850]] = dL[year >= 1850]
         out.append(tmp)
 

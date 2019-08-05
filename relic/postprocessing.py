@@ -23,3 +23,21 @@ def calc_acdc(_obs, spinup, model, meta, col):
     acdc.iloc[0] = 0
 
     return acdc
+
+
+def relative_length_change(meta, spinup, histrun):
+    spin = (spinup.loc[:] - spinup.loc[0]).dropna().iloc[-1]
+    dl = spin + meta['dL2003'].iloc[0]
+    # relative length change
+    rel_dl = histrun.loc[:] - histrun.iloc[0] + dl
+
+    return rel_dl
+
+
+def mae(obs, model):
+    return np.mean(np.abs(obs-model).dropna())
+
+
+def r2(obs, model):
+    ix = obs.dropna().index
+    return np.corrcoef(obs.dropna(), model[ix])[0, 1]
