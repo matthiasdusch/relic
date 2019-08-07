@@ -111,23 +111,25 @@ def accum_error(spinup, df, meta, data, pout, colname=None, cols=None):
     fig.savefig(fn)
 
 
-def plt_multiple_runs(runs, pout, y_roll=1):
+def plt_multiple_runs(runs, pout, y_roll=1, reference=None):
 
     meta, data = get_leclercq_observations()
 
     # get all glaciers
     glcs = [gl['rgi_id'] for gl in list(runs[0].values())[0]]
 
-    # linestyles
-    ls = ['-', '--', ':', '-.']
-
     for glid in glcs:
         _meta = meta.loc[meta['RGI_ID'] == glid].copy()
         _data = data.loc[_meta.index[0]].copy()
 
         fig, ax = plt.subplots(figsize=[15, 8])
-        _data.plot(ax=ax, color='k', marker='o',
-                   label='Observed length change')
+        _data.rolling(y_roll, min_periods=1).mean().\
+            plot(ax=ax, color='k', marker='o', label='Observed length change')
+
+        df = pd.DataFrame([], index=np.arange(1850, 2011))
+        # df.loc[_data.index, 'obs'] = _data
+        mae = pd.Series()
+        r2 = pd.Series()
 
         for nr, run in enumerate(runs):
             rlist = list(run.values())[0]
@@ -135,21 +137,43 @@ def plt_multiple_runs(runs, pout, y_roll=1):
                 rdic = [gl for gl in rlist if gl['rgi_id'] == glid][0]
             except IndexError:
                 continue
+
             rkey = list(run.keys())[0]
+            lbl = rkey + ', MAE=%.2f, r2=%.2f' % (rdic['mae'], rdic['r2'])
 
-            # tbias = rdic['tbias']
+            df.loc[rdic['rel_dl'].index, lbl] = rdic['rel_dl']
 
-            spin = (rdic['spinup'].loc[:] -
-                    rdic['spinup'].loc[0]).dropna().iloc[-1]
+            mae.loc[lbl] = rdic['mae']
+            r2.loc[lbl] = rdic['r2']
 
-            dl = spin + _meta['dL2003'].iloc[0]
+            if rkey == reference:
+                refix = lbl
 
-            # relative length change
-            hist = rdic['histalp'].loc[:] - rdic['histalp'].iloc[0] + dl
+        maemin = mae.idxmin()
+        r2max = r2.idxmax()
 
-            #ax.plot(hist, label='%s, %s = %.2f' % (rkey, 'tbias', tbias))
-            ax.plot(hist.rolling(y_roll).mean(), label='%s' % rkey,
-                    linewidth=3)
+        df.loc[:, ~df.columns.isin([maemin, r2max, refix])].\
+            rolling(y_roll).mean().plot(ax=ax, color='0.5', linewidth=0.7)
+
+        df.loc[:, maemin].rolling(y_roll).mean().plot(ax=ax,
+                                                      linewidth=3, color='C3')
+        df.loc[:, r2max].rolling(y_roll).mean().plot(ax=ax, linewidth=3,
+                                                     color='C2')
+
+        if reference is not None:
+            df.loc[:, refix].rolling(y_roll).mean().plot(ax=ax,
+                                                             linewidth=2,
+                                                             color='C0')
+
+        """
+        if 'Argentiere' in _meta['name'].iloc[0]:
+            fig2, ax2 = plt.subplots(figsize=[10, 10])
+            ax2.plot(_data.dropna(), df.loc[_data.dropna().index, r2max], 'o',
+                     color='C2')
+            ax2.plot(_data.dropna(), df.loc[_data.dropna().index, maemin], '.',
+                     color='C3')
+            plt.show()
+        """
 
         ax.set_title('%s %s' % (_meta['name'].iloc[0],
                                 _meta['RGI_ID'].iloc[0]))

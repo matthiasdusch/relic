@@ -293,6 +293,8 @@ def vary_precipitation_sf(gdirs, meta, obs, pcpsf=None,
 def vary_precipitation_gradient(gdirs, meta, obs, prcp_gradient=None,
                                 use_systematic_spinup=False):
 
+    cfg.PARAMS['run_mb_calibration'] = True
+
     if prcp_gradient is None:
         # vary gradient between 0% and 100% per 1000m
         prcp_gradient = np.nan  # np.arange(0, 1.1, 0.1)*1e-3
@@ -302,6 +304,19 @@ def vary_precipitation_gradient(gdirs, meta, obs, prcp_gradient=None,
         # actual spinup and histalp
         cfg.PARAMS['prcp_gradient'] = grad
         log.info('Precipitation gradient = %.1e' % grad)
+
+        # finish OGGM tasks
+        compute_ref_t_stars(gdirs)
+        task_list = [tasks.local_t_star,
+                     tasks.mu_star_calibration,
+                     tasks.prepare_for_inversion,
+                     tasks.mass_conservation_inversion,
+                     tasks.filter_inversion_output,
+                     tasks.init_present_time_glacier
+                     ]
+        for task in task_list:
+            execute_entity_task(task, gdirs)
+
         rval_dict[grad] = execute_entity_task(simple_spinup_plus_histalp,
                                               gdirs, meta=meta, obs=obs,
                                               use_systematic_spinup=use_systematic_spinup
