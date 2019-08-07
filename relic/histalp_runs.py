@@ -2,16 +2,18 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 import logging
+import itertools
 
 from oggm import tasks, cfg
 from oggm.core.flowline import FileModel, robust_model_run
 from oggm.core.massbalance import (MultipleFlowlineMassBalance,
                                    ConstantMassBalance,
                                    PastMassBalance)
-from oggm.workflow import execute_entity_task
+from oggm.workflow import execute_entity_task, init_glacier_regions
 from oggm.core.climate import compute_ref_t_stars
 from oggm import entity_task
 from oggm.exceptions import InvalidParamsError
+from oggm.utils import get_ref_mb_glaciers_candidates
 
 from relic.spinup import spinup_with_tbias, minimize_dl, systematic_spinup
 from relic.postprocessing import relative_length_change, mae, r2
@@ -321,5 +323,66 @@ def vary_precipitation_gradient(gdirs, meta, obs, prcp_gradient=None,
                                               gdirs, meta=meta, obs=obs,
                                               use_systematic_spinup=use_systematic_spinup
                                               )
+
+    return rval_dict
+
+
+def multi_parameter_run(paramdict, gdirs, meta, obs, rgiregion=11,
+                        use_systematic_spinup=False):
+
+    # we want to run the mb calibration every time
+    cfg.PARAMS['run_mb_calibration'] = True
+    # and we want to use all glaciers for that (from one region)
+    refids = get_ref_mb_glaciers_candidates()
+    if rgiregion is not None:
+        refids = [rid for rid in refids if '-%d.' % rgiregion in rid]
+    # but do leave out the actual glaciers
+    gids = [gd.rgi_id for gd in gdirs]
+    refids = [rid for rid in refids if rid not in gids]
+
+    # initialize the reference glaciers
+    ref_gdirs = init_glacier_regions(rgidf=refids,
+                                     from_prepro_level=3, prepro_border=10)
+
+    # get us all parameters
+    keys = paramdict.keys()
+    values = paramdict.values()
+    paramcombi = [dict(zip(keys, combination)) for
+                  combination in itertools.product(*values)]
+    log.info('Multi parameter run with >>> %s <<< parameters started.' %
+             len(paramcombi))
+
+    rval_dict = {}
+
+    # loop over all combinations
+    for nr, combi in enumerate(paramcombi):
+
+        # set all parameters
+        for key, val in combi.items():
+            cfg.PARAMS[key] = val
+            # we set both glen As
+            if key == 'glen_a':
+                cfg.PARAMS['inversion_glen_a'] = val
+
+        log.info('Current parameter combination: %s' % str(combi))
+
+        # do the mass balance calibration
+        compute_ref_t_stars(ref_gdirs + gdirs)
+        task_list = [tasks.local_t_star,
+                     tasks.mu_star_calibration,
+                     tasks.prepare_for_inversion,
+                     tasks.mass_conservation_inversion,
+                     tasks.filter_inversion_output,
+                     tasks.init_present_time_glacier
+                     ]
+        for task in task_list:
+            execute_entity_task(task, gdirs)
+
+        # do the actual simulations
+        rval_dict[combi] = execute_entity_task(simple_spinup_plus_histalp,
+                                               gdirs, meta=meta, obs=obs,
+                                               use_systematic_spinup=
+                                               use_systematic_spinup
+                                               )
 
     return rval_dict

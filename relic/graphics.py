@@ -127,7 +127,6 @@ def plt_multiple_runs(runs, pout, y_roll=1, reference=None):
             plot(ax=ax, color='k', marker='o', label='Observed length change')
 
         df = pd.DataFrame([], index=np.arange(1850, 2011))
-        # df.loc[_data.index, 'obs'] = _data
         mae = pd.Series()
         r2 = pd.Series()
 
@@ -162,8 +161,8 @@ def plt_multiple_runs(runs, pout, y_roll=1, reference=None):
 
         if reference is not None:
             df.loc[:, refix].rolling(y_roll).mean().plot(ax=ax,
-                                                             linewidth=2,
-                                                             color='C0')
+                                                         linewidth=2,
+                                                         color='C0')
 
         """
         if 'Argentiere' in _meta['name'].iloc[0]:
