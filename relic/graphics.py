@@ -150,9 +150,10 @@ def plt_multiple_runs(runs, pout, y_roll=1, reference=None):
 
         maemin = mae.idxmin()
         r2max = r2.idxmax()
+        refix = None
 
         df.loc[:, ~df.columns.isin([maemin, r2max, refix])].\
-            rolling(y_roll).mean().plot(ax=ax, color='0.5', linewidth=0.7)
+            rolling(y_roll).mean().plot(ax=ax, linewidth=0.7)#, color='0.5')
 
         df.loc[:, maemin].rolling(y_roll).mean().plot(ax=ax,
                                                       linewidth=3, color='C3')

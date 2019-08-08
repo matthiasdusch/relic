@@ -159,8 +159,26 @@ def relic_from_climate_data(gdir, ys=None, ye=None, min_ys=None,
             fmod.run_until(init_model_yr)
             init_model_fls = fmod.fls
 
-    if (mass_balance_bias is not None) and ('merged' in gdir.rgi_id):
-        raise ValueError('Need to think about this...')
+    if mass_balance_bias is not None:
+        if '_merged' in gdir.rgi_id:
+            raise ValueError('need to implement this')
+        """
+        fls = gdir.read_pickle('model_flowlines')
+        for fl in fls:
+            if fl.rgi_id != gdir.rgi_id.strip('_merged'):
+                flsfx = '_' + fl.rgi_id
+            else:
+                flsfx = ''
+            df = gdir.read_json('local_mustar', filesuffix=flsfx)
+            df['bias'] * mass_balance_bias
+            gdir.write_json(df, 'local_mustar', filesuffix=flsfx)
+            ...
+            # we write this to the local_mustar file so we do not need to
+            # pass it on to the MultipleFlowlineMassBalance model
+            mass_balance_bias = None
+        """
+        df = gdir.read_json('local_mustar')
+        mass_balance_bias += df['bias']
 
     mb = MultipleFlowlineMassBalance(gdir, mb_model_class=PastMassBalance,
                                      filename=climate_filename,
@@ -353,6 +371,12 @@ def multi_parameter_run(paramdict, gdirs, meta, obs, rgiregion=11,
     log.info('Multi parameter run with >>> %s <<< parameters started.' %
              len(paramcombi))
 
+    # set mass balance bias to None, will be changed if passed as a parameter
+    mbbias = None
+
+    # default glena
+    default_glena = cfg.PARAMS['glen_a']
+
     rval_dict = {}
 
     # loop over all combinations
@@ -360,12 +384,19 @@ def multi_parameter_run(paramdict, gdirs, meta, obs, rgiregion=11,
 
         # set all parameters
         for key, val in combi.items():
-            cfg.PARAMS[key] = val
-            # we set both glen As
-            if key == 'glen_a':
-                cfg.PARAMS['inversion_glen_a'] = val
+
+            # here we se cfg.PARAMS values
+            if key == 'glena_factor':
+                cfg.PARAMS['glen_a'] = val * default_glena
+                cfg.PARAMS['inversion_glen_a'] = val * default_glena
+            # set mass balance bias
+            elif key == 'mbbias':
+                mbbias = val
+            else:
+                raise ValueError('Parameter not understood')
 
         log.info('Current parameter combination: %s' % str(combi))
+        log.info('This is combination %d out of %d.' % (nr+1, len(paramcombi)))
 
         # do the mass balance calibration
         compute_ref_t_stars(ref_gdirs + gdirs)
@@ -383,7 +414,8 @@ def multi_parameter_run(paramdict, gdirs, meta, obs, rgiregion=11,
         rval = execute_entity_task(simple_spinup_plus_histalp,
                                    gdirs, meta=meta, obs=obs,
                                    use_systematic_spinup=
-                                   use_systematic_spinup
+                                   use_systematic_spinup,
+                                   mb_bias=mbbias
                                    )
         rval_dict[str(combi)] = rval
 
