@@ -392,6 +392,8 @@ def multi_parameter_run(paramdict, gdirs, meta, obs, rgiregion=11,
             # set mass balance bias
             elif key == 'mbbias':
                 mbbias = val
+            elif key == 'prcp_scaling_factor':
+                cfg.PARAMS['prcp_scaling_factor'] = val
             else:
                 raise ValueError('Parameter not understood')
 
