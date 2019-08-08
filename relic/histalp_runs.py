@@ -3,6 +3,7 @@ import pandas as pd
 import xarray as xr
 import logging
 import itertools
+import ast
 
 from oggm import tasks, cfg
 from oggm.core.flowline import FileModel, robust_model_run
@@ -379,10 +380,11 @@ def multi_parameter_run(paramdict, gdirs, meta, obs, rgiregion=11,
             execute_entity_task(task, gdirs)
 
         # do the actual simulations
-        rval_dict[combi] = execute_entity_task(simple_spinup_plus_histalp,
-                                               gdirs, meta=meta, obs=obs,
-                                               use_systematic_spinup=
-                                               use_systematic_spinup
-                                               )
+        rval = execute_entity_task(simple_spinup_plus_histalp,
+                                   gdirs, meta=meta, obs=obs,
+                                   use_systematic_spinup=
+                                   use_systematic_spinup
+                                   )
+        rval_dict[str(combi)] = rval
 
     return rval_dict

@@ -41,3 +41,10 @@ def mae(obs, model):
 def r2(obs, model):
     ix = obs.dropna().index
     return np.corrcoef(obs.dropna(), model[ix])[0, 1]
+
+
+def dummy_dismantel_multirun():
+    # just to remember
+    import ast
+    # rvaldict keys are strings, transform to dict with
+    # combinationdict=ast.literal_eval(rvaldictkey)
