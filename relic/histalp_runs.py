@@ -377,6 +377,9 @@ def multi_parameter_run(paramdict, gdirs, meta, obs, rgiregion=11,
     # default glena
     default_glena = cfg.PARAMS['glen_a']
 
+    # default sliding
+    default_fs = 5.7e-20
+
     rval_dict = {}
 
     # loop over all combinations
@@ -394,6 +397,9 @@ def multi_parameter_run(paramdict, gdirs, meta, obs, rgiregion=11,
                 mbbias = val
             elif key == 'prcp_scaling_factor':
                 cfg.PARAMS['prcp_scaling_factor'] = val
+            elif key == 'sliding_factor':
+                cfg.PARAMS['fs'] = val * default_fs
+                cfg.PARAMS['inversion_fs'] = val * default_fs
             else:
                 raise ValueError('Parameter not understood')
 

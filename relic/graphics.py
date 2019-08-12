@@ -153,12 +153,13 @@ def plt_multiple_runs(runs, pout, y_roll=1, reference=None):
         refix = None
 
         df.loc[:, ~df.columns.isin([maemin, r2max, refix])].\
-            rolling(y_roll).mean().plot(ax=ax, linewidth=0.7)#, color='0.5')
+            rolling(y_roll, center=True).mean().\
+            plot(ax=ax, linewidth=0.7)#, color='0.5')
 
-        df.loc[:, maemin].rolling(y_roll).mean().plot(ax=ax,
-                                                      linewidth=3, color='C3')
-        df.loc[:, r2max].rolling(y_roll).mean().plot(ax=ax, linewidth=3,
-                                                     color='C2')
+        df.loc[:, maemin].rolling(y_roll, center=True).\
+            mean().plot(ax=ax, linewidth=3, color='C3')
+        df.loc[:, r2max].rolling(y_roll, center=True).\
+            mean().plot(ax=ax, linewidth=3, color='C2')
 
         if reference is not None:
             df.loc[:, refix].rolling(y_roll).mean().plot(ax=ax,
@@ -179,9 +180,125 @@ def plt_multiple_runs(runs, pout, y_roll=1, reference=None):
                                 _meta['RGI_ID'].iloc[0]))
         ax.set_ylabel('delta length [m]')
         ax.set_xlabel('year')
+        ax.set_xlim([1850, 2015])
         ax.grid(True)
         ax.legend()
         fig.tight_layout()
         fn = os.path.join(pout, 'histalp_%s.png' % _meta['name'].iloc[0])
         fig.savefig(fn)
 
+
+def plt_correlation(runs, pout, y_len=1, y_corr=10, reference=None):
+
+    meta, data = get_leclercq_observations()
+
+    # get all glaciers
+    glcs = [gl['rgi_id'] for gl in list(runs[0].values())[0]]
+
+    for glid in glcs:
+        _meta = meta.loc[meta['RGI_ID'] == glid].copy()
+        _data = data.loc[_meta.index[0]].copy()
+
+        fig1, ax1 = plt.subplots(figsize=[17, 8])
+        fig2, ax2 = plt.subplots(figsize=[17, 8])
+
+        _data.rolling(y_len, min_periods=1).mean(). \
+            plot(ax=ax1, color='k', marker='o', label='Observed length change')
+
+        df = pd.DataFrame([], index=np.arange(1850, 2011))
+        mae = pd.Series()
+
+        mbplus = []
+        mbminus = []
+
+        for nr, run in enumerate(runs):
+            rlist = list(run.values())[0]
+            try:
+                rdic = [gl for gl in rlist if gl['rgi_id'] == glid][0]
+            except IndexError:
+                continue
+
+            if np.isnan(rdic['tbias']):
+                continue
+
+            rkey = list(run.keys())[0]
+            lbl = rkey + ', MAE=%.2f, r2=%.2f' % (rdic['mae'], rdic['r2'])
+
+            # get massbalance bias
+            mbbias = float([mb for mb in lbl.split(',') if 'mbbias' in mb][0].split(':')[-1])
+            if mbbias == 25:
+                mbplus.append(lbl)
+            elif mbbias == -25:
+                mbminus.append(lbl)
+
+            df.loc[rdic['rel_dl'].index, lbl] = rdic['rel_dl']
+
+            mae.loc[lbl] = rdic['mae']
+
+        maemin = mae.idxmin()
+
+        dfcorr = df.rolling(y_corr, min_periods=int(y_corr/2), center=True).\
+            corr(_data)
+
+        maxcorr = dfcorr.mean().idxmax()
+        medcorr = dfcorr.median().idxmax()
+
+        # length plot
+        others = df.loc[:, ~df.columns.isin([maemin, maxcorr, medcorr])].\
+            rolling(y_len, center=True).mean()
+        # df.loc[:, ~df.columns.isin([maemin, maxcorr, medcorr])]. \
+        #    rolling(y_len, center=True).mean(). \
+        #    plot(ax=ax1, linewidth=0.4, color='0.8', label='_')
+
+        others.columns = ['' for i in range(len(others.columns))]
+        others.plot(ax=ax1, linewidth=0.4, color='0.8')
+
+        df.loc[:, maemin].rolling(y_len, center=True). \
+            mean().plot(ax=ax1, linewidth=3, color='C0')
+        df.loc[:, maxcorr].rolling(y_len, center=True). \
+            mean().plot(ax=ax1, linewidth=3, color='C2')
+        df.loc[:, medcorr].rolling(y_len, center=True). \
+            mean().plot(ax=ax1, linewidth=3, color='C4')
+
+        df.loc[:, mbplus].rolling(y_len, center=True). \
+            mean().plot(ax=ax1, linewidth=0.4, color='C1')
+        df.loc[:, mbminus].rolling(y_len, center=True). \
+            mean().plot(ax=ax1, linewidth=0.4, color='C3')
+
+        ax1.set_title('%s %s' % (_meta['name'].iloc[0],
+                                 _meta['RGI_ID'].iloc[0]))
+        ax1.set_ylabel('delta length [m]')
+        ax1.set_xlabel('year')
+        ax1.set_xlim([1850, 2015])
+        ax1.grid(True)
+        ax1.legend()
+        # fig1.tight_layout()
+        fn1 = os.path.join(pout, 'histalp_%s.png' % _meta['name'].iloc[0])
+        fig1.savefig(fn1)
+
+        # corrplots
+        # dfcorr.loc[:, ~dfcorr.columns.isin([maemin, maxcorr, medcorr])].\
+        #    plot(ax=ax2, linewidth=0.4, color='0.8', legend=False)
+
+        othercorr = dfcorr.loc[:, ~dfcorr.columns.isin(
+            [maemin, maxcorr, medcorr])].\
+            rolling(y_len, center=True).mean()
+
+        othercorr.columns = ['' for i in range(len(othercorr.columns))]
+        othercorr.plot(ax=ax2, linewidth=0.4, color='0.8')
+
+        dfcorr.loc[:, maemin].plot(ax=ax2, linewidth=3, color='C0')
+        dfcorr.loc[:, maxcorr].plot(ax=ax2, linewidth=3, color='C2')
+        dfcorr.loc[:, medcorr].plot(ax=ax2, linewidth=3, color='C4')
+
+        ax2.set_title('rolling correlation (%d years) for %s %s' %
+                      (y_corr, _meta['name'].iloc[0], _meta['RGI_ID'].iloc[0]))
+        ax2.set_ylabel('correlation')
+        ax2.set_xlabel('year')
+        ax2.set_xlim([1850, 2015])
+        ax2.set_ylim([-1, 1])
+        ax2.grid(True)
+        ax2.legend()
+        fig2.tight_layout()
+        fn2 = os.path.join(pout, 'correlation_%s.png' % _meta['name'].iloc[0])
+        fig2.savefig(fn2)
