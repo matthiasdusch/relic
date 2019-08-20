@@ -225,9 +225,11 @@ def simple_spinup_plus_histalp(gdir, meta=None, obs=None, mb_bias=None,
                                 output_filesuffix='_histalp',
                                 mass_balance_bias=mb_bias)
     except RuntimeError as err:
-        if err.args[0] == 'Glacier exceeds domain boundaries.':
+        if err.match('Glacier exceeds domain boundaries'):
             log.info('(%s) histalp run exceeded domain bounds' % gdir.rgi_id)
             return
+        else:
+            raise RuntimeError('other error')
 
     ds1 = xr.open_dataset(gdir.get_filepath('model_diagnostics',
                                             filesuffix='_histalp'))
