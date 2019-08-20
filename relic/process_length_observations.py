@@ -1,3 +1,4 @@
+import os
 import pandas as pd
 import urllib
 import numpy as np
@@ -73,6 +74,11 @@ def download_leclercq(firstyear=None):
 
     for nr, glc in dfout.iterrows():
 
+        if dfmeta.loc[nr, 'name'] == 'U Grindelwald':
+            # lets linearely interpolate Unterer Grindelwald glacier....
+            dfout.loc[nr, 2003] = -2027.0
+            glc.loc[2003] = -2027.0
+
         if firstyear is not None:
             first = glc.dropna().index[glc.dropna().index >= firstyear][0]
         else:
@@ -130,8 +136,56 @@ def select_my_glaciers(meta, data):
     meta.loc[176, 'RGI_ID'] = 'RGI60-11.02755'  # Tsidjore Nouve
     meta.loc[171, 'RGI_ID'] = 'RGI60-11.02740'  # Trient
     meta.loc[115, 'RGI_ID'] = 'RGI60-11.01946'  # Morteratsch
+    meta.loc[181, 'RGI_ID'] = 'RGI60-11.01346'  # Unterer Grindelwald
 
     meta = meta.loc[meta.loc[:, 'RGI_ID'].dropna().index]
     data = data.loc[meta.index]
+
+    return meta, data
+
+
+def add_custom_length(meta, data, ids):
+
+    glamos = pd.read_csv(os.path.join(os.path.dirname(__file__),
+                                      'lengthchange.csv'),
+                         header=6)
+
+    for rgi in ids:
+
+        if rgi == 'RGI60-11.02051':
+            name = 'Vadret da Tschierva'
+        elif rgi == 'RGI60-11.02709':
+            name = 'Glacier du Mont Miné'
+        else:
+            raise ValueError('no data implemented')
+
+        glc = glamos.loc[glamos['glacier name'] == name, :]
+
+        tmp = pd.DataFrame([], columns=['dl'])
+        tmp['dl'] = glc['length change'].astype(float).cumsum()
+        tmp.index = pd.DatetimeIndex(glc['end date of observation']).year
+
+        t0 = pd.DatetimeIndex(glc['start date of observation']).year[0]
+        tmp.loc[t0, 'dl'] = 0
+        tmp.sort_index(inplace=True)
+
+        assert (tmp.index.unique() == tmp.index).all()
+
+        # find 2003 length
+        try:
+            dl2003 = tmp.loc[2003].iloc[0]
+        except KeyError:
+            minarg = np.abs(tmp.loc[2000:2006].dropna().index-2003).argmin()
+            dl2003 = tmp.loc[2000:2006].dropna().iloc[minarg]
+
+        meta.loc[-1*int(rgi.split('.')[-1])] = {'name': name,
+                                                'lon': -99,
+                                                'lat': -99,
+                                                'first': t0,
+                                                'measurements': len(tmp),
+                                                'dL2003': dl2003,
+                                                'RGI_ID': rgi}
+
+        data.loc[-1*int(rgi.split('.')[-1])] = tmp['dl']
 
     return meta, data

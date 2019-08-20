@@ -8,6 +8,7 @@ import os
 
 from relic.postprocessing import calc_acdc
 from relic.preprocessing import get_leclercq_observations
+from relic.process_length_observations import add_custom_length
 
 
 def visual_check_spinup(df, meta, tbias, pout, colname=None, cols=None):
@@ -191,12 +192,16 @@ def plt_multiple_runs(runs, pout, y_roll=1, reference=None):
 def plt_correlation(runs, pout, y_len=1, y_corr=10, reference=None):
 
     meta, data = get_leclercq_observations()
+    meta, data = add_custom_length(meta, data,
+                                   ['RGI60-11.02051', 'RGI60-11.02709'])
 
     # get all glaciers
     glcs = [gl['rgi_id'] for gl in list(runs[0].values())[0]]
 
     for glid in glcs:
-        _meta = meta.loc[meta['RGI_ID'] == glid].copy()
+        # take care of merged glaciers
+        rgi_id = glid.split('_')[0]
+        _meta = meta.loc[meta['RGI_ID'] == rgi_id].copy()
         _data = data.loc[_meta.index[0]].copy()
 
         fig1, ax1 = plt.subplots(figsize=[17, 8])
@@ -204,6 +209,19 @@ def plt_correlation(runs, pout, y_len=1, y_corr=10, reference=None):
 
         _data.rolling(y_len, min_periods=1).mean(). \
             plot(ax=ax1, color='k', marker='o', label='Observed length change')
+
+        if '_merged' in glid:
+            mids = {'RGI60-11.02715': 'RGI60-11.02709',
+                    'RGI60-11.02119': 'RGI60-11.02051'
+                    }
+            mid = mids[rgi_id]
+
+            _mmeta = meta.loc[meta['RGI_ID'] == mid].copy()
+            _mdata = data.loc[_mmeta.index[0]].copy()
+            _mdata.rolling(y_len, min_periods=1).mean(). \
+                plot(ax=ax1, color='k', marker='^',
+                     label='Observed length change at tributary')
+            dfmerge = pd.DataFrame([], index=np.arange(1850, 2011))
 
         df = pd.DataFrame([], index=np.arange(1850, 2011))
         mae = pd.Series()
@@ -224,16 +242,33 @@ def plt_correlation(runs, pout, y_len=1, y_corr=10, reference=None):
             rkey = list(run.keys())[0]
             lbl = rkey + ', MAE=%.2f, r2=%.2f' % (rdic['mae'], rdic['r2'])
 
+            """
             # get massbalance bias
-            mbbias = float([mb for mb in lbl.split(',') if 'mbbias' in mb][0].split(':')[-1])
-            if mbbias == 25:
-                mbplus.append(lbl)
-            elif mbbias == -25:
-                mbminus.append(lbl)
+            try:
+                mbbias = float([mb for mb in lbl.split(',') if 'mbbias' in mb][0].split(':')[-1])
+                if mbbias == 25:
+                    mbplus.append(lbl)
+                elif mbbias == -25:
+                    mbminus.append(lbl)
+            except IndexError:
+                pass
+            """
 
-            df.loc[rdic['rel_dl'].index, lbl] = rdic['rel_dl']
+            if (np.abs(_data-rdic['rel_dl']).dropna() < 20000).all():
+                df.loc[rdic['rel_dl'].index, lbl] = rdic['rel_dl']
 
             mae.loc[lbl] = rdic['mae']
+
+            if '_merged' in glid:
+                dfmerge.loc[rdic['trib_dl'].index, lbl] = rdic['trib_dl']
+
+        if df.empty:
+
+            fn1 = os.path.join(pout, 'histalp_%s.png' % _meta['name'].iloc[0])
+            fig1.savefig(fn1)
+            fn2 = os.path.join(pout, 'correlation_%s.png' % _meta['name'].iloc[0])
+            fig2.savefig(fn2)
+            continue
 
         maemin = mae.idxmin()
 
@@ -243,6 +278,21 @@ def plt_correlation(runs, pout, y_len=1, y_corr=10, reference=None):
         maxcorr = dfcorr.mean().idxmax()
         medcorr = dfcorr.median().idxmax()
 
+        df_dt = df.copy()
+        df_dt.index = pd.to_datetime(df_dt.index, format="%Y")
+        rundif = df_dt.resample("10Y").mean().diff()
+
+        obs = _data.copy()
+        obs.index = pd.to_datetime(obs.index, format="%Y")
+        obs = obs.resample("10Y").mean().diff()
+
+        xcorr = rundif.sub(obs, axis=0).abs().mean().idxmin()
+
+        #dfxcorr = df.copy()
+        #dfxcorr['obs'] = _data
+        #dfxcorr = dfxcorr.corr()['obs']
+        #xcorr = dfxcorr.loc[~dfxcorr.index.isin(['obs'])].idxmax()
+
         # length plot
         others = df.loc[:, ~df.columns.isin([maemin, maxcorr, medcorr])].\
             rolling(y_len, center=True).mean()
@@ -251,7 +301,10 @@ def plt_correlation(runs, pout, y_len=1, y_corr=10, reference=None):
         #    plot(ax=ax1, linewidth=0.4, color='0.8', label='_')
 
         others.columns = ['' for i in range(len(others.columns))]
-        others.plot(ax=ax1, linewidth=0.4, color='0.8')
+        try:
+            others.plot(ax=ax1, linewidth=0.4, color='0.8')
+        except TypeError:
+            pass
 
         df.loc[:, maemin].rolling(y_len, center=True). \
             mean().plot(ax=ax1, linewidth=3, color='C0')
@@ -259,17 +312,33 @@ def plt_correlation(runs, pout, y_len=1, y_corr=10, reference=None):
             mean().plot(ax=ax1, linewidth=3, color='C2')
         df.loc[:, medcorr].rolling(y_len, center=True). \
             mean().plot(ax=ax1, linewidth=3, color='C4')
+        df.loc[:, xcorr].rolling(y_len, center=True). \
+            mean().plot(ax=ax1, linewidth=3, color='C6')
 
-        df.loc[:, mbplus].rolling(y_len, center=True). \
-            mean().plot(ax=ax1, linewidth=0.4, color='C1')
-        df.loc[:, mbminus].rolling(y_len, center=True). \
-            mean().plot(ax=ax1, linewidth=0.4, color='C3')
+        if '_merged' in glid:
+            dfmerge.loc[:, maemin].rolling(y_len, center=True). \
+                mean().plot(ax=ax1, linewidth=2, color='C0',
+                            marker='^')
+            dfmerge.loc[:, xcorr].rolling(y_len, center=True). \
+                mean().plot(ax=ax1, linewidth=2, color='C6',
+                            marker='^')
+
+        """
+        try:
+            df.loc[:, mbplus].rolling(y_len, center=True). \
+                mean().plot(ax=ax1, linewidth=0.4, color='C1')
+            df.loc[:, mbminus].rolling(y_len, center=True). \
+                mean().plot(ax=ax1, linewidth=0.4, color='C3')
+        except TypeError:
+            pass
+        """
 
         ax1.set_title('%s %s' % (_meta['name'].iloc[0],
                                  _meta['RGI_ID'].iloc[0]))
         ax1.set_ylabel('delta length [m]')
         ax1.set_xlabel('year')
         ax1.set_xlim([1850, 2015])
+        ax1.set_ylim([-5000, 1000])
         ax1.grid(True)
         ax1.legend()
         # fig1.tight_layout()
@@ -285,11 +354,15 @@ def plt_correlation(runs, pout, y_len=1, y_corr=10, reference=None):
             rolling(y_len, center=True).mean()
 
         othercorr.columns = ['' for i in range(len(othercorr.columns))]
-        othercorr.plot(ax=ax2, linewidth=0.4, color='0.8')
+        try:
+            othercorr.plot(ax=ax2, linewidth=0.4, color='0.8')
+        except TypeError:
+            pass
 
         dfcorr.loc[:, maemin].plot(ax=ax2, linewidth=3, color='C0')
         dfcorr.loc[:, maxcorr].plot(ax=ax2, linewidth=3, color='C2')
         dfcorr.loc[:, medcorr].plot(ax=ax2, linewidth=3, color='C4')
+        dfcorr.loc[:, xcorr].plot(ax=ax2, linewidth=3, color='C6')
 
         ax2.set_title('rolling correlation (%d years) for %s %s' %
                       (y_corr, _meta['name'].iloc[0], _meta['RGI_ID'].iloc[0]))

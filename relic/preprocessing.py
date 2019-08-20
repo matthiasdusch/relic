@@ -7,7 +7,8 @@ from oggm.core.climate import compute_ref_t_stars
 from oggm.workflow import execute_entity_task
 from oggm import entity_task
 
-from relic.process_leclercq import download_leclercq, select_my_glaciers
+from relic.process_length_observations import (download_leclercq,
+                                               select_my_glaciers)
 
 import logging
 log = logging.getLogger(__name__)

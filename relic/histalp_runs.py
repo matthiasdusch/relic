@@ -10,7 +10,8 @@ from oggm.core.flowline import FileModel, robust_model_run
 from oggm.core.massbalance import (MultipleFlowlineMassBalance,
                                    ConstantMassBalance,
                                    PastMassBalance)
-from oggm.workflow import execute_entity_task, init_glacier_regions
+from oggm.workflow import (execute_entity_task, init_glacier_regions,
+                           merge_glacier_tasks)
 from oggm.core.climate import compute_ref_t_stars
 from oggm import entity_task
 from oggm.exceptions import InvalidParamsError
@@ -161,24 +162,18 @@ def relic_from_climate_data(gdir, ys=None, ye=None, min_ys=None,
 
     if mass_balance_bias is not None:
         if '_merged' in gdir.rgi_id:
-            raise ValueError('need to implement this')
-        """
-        fls = gdir.read_pickle('model_flowlines')
-        for fl in fls:
-            if fl.rgi_id != gdir.rgi_id.strip('_merged'):
+            fls = gdir.read_pickle('model_flowlines')
+            for fl in fls:
                 flsfx = '_' + fl.rgi_id
-            else:
-                flsfx = ''
-            df = gdir.read_json('local_mustar', filesuffix=flsfx)
-            df['bias'] * mass_balance_bias
-            gdir.write_json(df, 'local_mustar', filesuffix=flsfx)
-            ...
+                df = gdir.read_json('local_mustar', filesuffix=flsfx)
+                df['bias'] += mass_balance_bias
+                gdir.write_json(df, 'local_mustar', filesuffix=flsfx)
             # we write this to the local_mustar file so we do not need to
             # pass it on to the MultipleFlowlineMassBalance model
             mass_balance_bias = None
-        """
-        df = gdir.read_json('local_mustar')
-        mass_balance_bias += df['bias']
+        else:
+            df = gdir.read_json('local_mustar')
+            mass_balance_bias += df['bias']
 
     mb = MultipleFlowlineMassBalance(gdir, mb_model_class=PastMassBalance,
                                      filename=climate_filename,
@@ -196,8 +191,11 @@ def relic_from_climate_data(gdir, ys=None, ye=None, min_ys=None,
 def simple_spinup_plus_histalp(gdir, meta=None, obs=None, mb_bias=None,
                                use_systematic_spinup=False):
 
+    # take care of merged glaciers
+    rgi_id = gdir.rgi_id.split('_')[0]
+
     # select meta and obs
-    meta = meta.loc[meta['RGI_ID'] == gdir.rgi_id].copy()
+    meta = meta.loc[meta['RGI_ID'] == rgi_id].copy()
     obs = obs.loc[meta.index].iloc[0].copy()
     obs_ye = obs.dropna().index[-1]
 
@@ -221,10 +219,15 @@ def simple_spinup_plus_histalp(gdir, meta=None, obs=None, mb_bias=None,
     tmp_mod.run_until(tmp_mod.last_yr)
 
     # --------- HIST IT DOWN ---------------
-    relic_from_climate_data(gdir, ys=meta['first'].iloc[0], ye=obs_ye,
-                            init_model_fls=tmp_mod.fls,
-                            output_filesuffix='_histalp',
-                            mass_balance_bias=mb_bias)
+    try:
+        relic_from_climate_data(gdir, ys=meta['first'].iloc[0], ye=obs_ye,
+                                init_model_fls=tmp_mod.fls,
+                                output_filesuffix='_histalp',
+                                mass_balance_bias=mb_bias)
+    except RuntimeError as err:
+        if err.args[0] == 'Glacier exceeds domain boundaries.':
+            log.info('(%s) histalp run exceeded domain bounds' % gdir.rgi_id)
+            return
 
     ds1 = xr.open_dataset(gdir.get_filepath('model_diagnostics',
                                             filesuffix='_histalp'))
@@ -232,7 +235,13 @@ def simple_spinup_plus_histalp(gdir, meta=None, obs=None, mb_bias=None,
                                             filesuffix='_spinup'))
     # store mean temperature and precipitation
     yindex = np.arange(meta['first'].iloc[0], obs_ye+1)
-    cm = xr.open_dataset(gdir.get_filepath('climate_monthly'))
+
+    try:
+        cm = xr.open_dataset(gdir.get_filepath('climate_monthly'))
+    except FileNotFoundError:
+        cm = xr.open_dataset(gdir.get_filepath('climate_monthly',
+                                               filesuffix='_' + rgi_id))
+
     tmean = cm.temp.groupby('time.year').mean().loc[yindex].to_pandas()
     pmean = cm.prcp.groupby('time.year').mean().loc[yindex].to_pandas()
 
@@ -247,6 +256,30 @@ def simple_spinup_plus_histalp(gdir, meta=None, obs=None, mb_bias=None,
 
     rval['mae'] = mae(obs, rval['rel_dl'])
     rval['r2'] = r2(obs, rval['histalp'])
+
+    # if merged, store tributary flowline change as well
+    if '_merged' in gdir.rgi_id:
+
+        trib = rval['histalp'].copy() * np.nan
+
+        # choose the correct flowline index, use model_fls as they have rgiids
+        fls = gdir.read_pickle('model_flowlines')
+        flix = np.where([fl.rgi_id != rgi_id for fl in fls])[0][-1]
+
+        fmod = FileModel(gdir.get_filepath('model_run', filesuffix='_histalp'))
+        assert fmod.fls[flix].nx == fls[flix].nx, ('filemodel and gdir '
+                                                   'flowlines do not match')
+        for yr in rval['histalp'].index:
+            fmod.run_until(yr)
+            trib.loc[yr] = fmod.fls[flix].length_m
+
+        #assert trib.iloc[0] == trib.max(), ('the tributary was not connected '
+        #                                    'to the main glacier at the start '
+        #                                    'of this histalp run')
+
+        trib -= trib.iloc[0]
+        rval['trib_dl'] = trib
+
     """
     except (FloatingPointError, RuntimeError) as err:
 
@@ -418,13 +451,40 @@ def multi_parameter_run(paramdict, gdirs, meta, obs, rgiregion=11,
         for task in task_list:
             execute_entity_task(task, gdirs)
 
+        # check for glaciers to merge:
+        id_pairs = [['RGI60-11.02119', 'RGI60-11.02051', 8],   # ferpecle, mine
+                    ['RGI60-11.02715', 'RGI60-11.02709', 2.5]]  # roseg,tschier
+        gdirs_merged = []
+        gdirs2sim = gdirs.copy()
+        for ids in id_pairs:
+            if (ids[0] in gids) and (ids[1] in gids):
+                gd2merge = [gd for gd in gdirs2sim if gd.rgi_id in ids]
+                gdirs2sim = [gd for gd in gdirs2sim if gd.rgi_id not in ids]
+                gdir_merged = merge_glacier_tasks(gd2merge, ids[0],
+                                                  buffer=ids[2])
+                """
+                # uncomment to visually inspect the merged glacier
+                import matplotlib.pyplot as plt
+                from oggm import graphics
+                f, ax = plt.subplots(1, 1, figsize=(12, 12))
+                graphics.plot_centerlines(gdir_merged,
+                                          use_model_flowlines=True, ax=ax)
+                plt.show()
+                """
+                gdirs_merged.append(gdir_merged)
+
+        gdirs2sim += gdirs_merged
+
         # do the actual simulations
         rval = execute_entity_task(simple_spinup_plus_histalp,
-                                   gdirs, meta=meta, obs=obs,
+                                   gdirs2sim, meta=meta, obs=obs,
                                    use_systematic_spinup=
                                    use_systematic_spinup,
                                    mb_bias=mbbias
                                    )
+        # remove possible Nones
+        rval = [rl for rl in rval if rl is not None]
+
         rval_dict[str(combi)] = rval
 
     return rval_dict
