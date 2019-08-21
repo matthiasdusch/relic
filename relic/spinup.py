@@ -55,7 +55,7 @@ def minimize_dl(tbias, mb, fls, dl, len2003, glena, gdir, optimization):
             raise RuntimeError('This should never happen...')
     except RuntimeError as err:
         if (optimization is True) and\
-           (err.args[0] == 'Glacier exceeds domain boundaries.'):
+           ('Glacier exceeds domain boundaries' in err.args[0]):
             log.info('(%s) tbias of %.2f exceeds domain boundaries' %
                      (gdir.rgi_id, tbias))
             return len2003**2
