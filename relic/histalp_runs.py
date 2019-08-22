@@ -490,3 +490,101 @@ def multi_parameter_run(paramdict, gdirs, meta, obs, rgiregion=11,
         rval_dict[str(combi)] = rval
 
     return rval_dict
+
+
+def slurm_array_multi_parameter_run(params, gdirs, meta, obs, rgiregion=11,
+                                    use_systematic_spinup=False):
+    # we want to run the mb calibration every time
+    cfg.PARAMS['run_mb_calibration'] = True
+    # and we want to use all glaciers for that (from one region)
+    refids = get_ref_mb_glaciers_candidates()
+    if rgiregion is not None:
+        refids = [rid for rid in refids if '-%d.' % rgiregion in rid]
+    # but do leave out the actual glaciers
+    gids = [gd.rgi_id for gd in gdirs]
+    refids = [rid for rid in refids if rid not in gids]
+
+    # initialize the reference glaciers
+    ref_gdirs = init_glacier_regions(rgidf=refids,
+                                     from_prepro_level=3, prepro_border=10)
+
+    # set mass balance bias to None, will be changed if passed as a parameter
+    mbbias = None
+
+    # default glena
+    default_glena = 2.4e-24
+
+    # default sliding
+    default_fs = 5.7e-20
+
+    rval_dict = {}
+
+    # set all parameters
+    for key, val in params.items():
+
+        # here we se cfg.PARAMS values
+        if key == 'glena_factor':
+            cfg.PARAMS['glen_a'] = val * default_glena
+            cfg.PARAMS['inversion_glen_a'] = val * default_glena
+        # set mass balance bias
+        elif key == 'mbbias':
+            mbbias = val
+        elif key == 'prcp_scaling_factor':
+            cfg.PARAMS['prcp_scaling_factor'] = val
+        elif key == 'sliding_factor':
+            cfg.PARAMS['fs'] = val * default_fs
+            cfg.PARAMS['inversion_fs'] = val * default_fs
+        else:
+            raise ValueError('Parameter not understood')
+
+    log.info('Current parameter combination: %s' % str(params))
+
+    # do the mass balance calibration
+    compute_ref_t_stars(ref_gdirs + gdirs)
+    task_list = [tasks.local_t_star,
+                 tasks.mu_star_calibration,
+                 tasks.prepare_for_inversion,
+                 tasks.mass_conservation_inversion,
+                 tasks.filter_inversion_output,
+                 tasks.init_present_time_glacier
+                 ]
+    for task in task_list:
+        execute_entity_task(task, gdirs)
+
+    # check for glaciers to merge:
+    id_pairs = [['RGI60-11.02119', 'RGI60-11.02051', 8],   # ferpecle, mine
+                ['RGI60-11.02715', 'RGI60-11.02709', 2.5]]  # roseg,tschier
+    gdirs_merged = []
+    gdirs2sim = gdirs.copy()
+    for ids in id_pairs:
+        if (ids[0] in gids) and (ids[1] in gids):
+            gd2merge = [gd for gd in gdirs2sim if gd.rgi_id in ids]
+            gdirs2sim = [gd for gd in gdirs2sim if gd.rgi_id not in ids]
+            gdir_merged = merge_glacier_tasks(gd2merge, ids[0],
+                                              buffer=ids[2])
+            """
+            # uncomment to visually inspect the merged glacier
+            import matplotlib.pyplot as plt
+            from oggm import graphics
+            f, ax = plt.subplots(1, 1, figsize=(12, 12))
+            graphics.plot_centerlines(gdir_merged,
+                                      use_model_flowlines=True, ax=ax)
+            plt.show()
+            """
+            gdirs_merged.append(gdir_merged)
+
+    gdirs2sim += gdirs_merged
+
+    # do the actual simulations
+    rval = execute_entity_task(simple_spinup_plus_histalp,
+                               gdirs2sim, meta=meta, obs=obs,
+                               use_systematic_spinup=
+                               use_systematic_spinup,
+                               mb_bias=mbbias
+                               )
+    # remove possible Nones
+    rval = [rl for rl in rval if rl is not None]
+
+    rval_dict[str(params)] = rval
+
+    return rval_dict

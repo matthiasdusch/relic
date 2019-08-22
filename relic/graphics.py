@@ -5,8 +5,9 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
 import os
+import ast
 
-from relic.postprocessing import calc_acdc
+from relic.postprocessing import calc_acdc, pareto, merged_ids, glcnames
 from relic.preprocessing import get_leclercq_observations
 from relic.process_length_observations import add_custom_length
 
@@ -375,3 +376,85 @@ def plt_correlation(runs, pout, y_len=1, y_corr=10, reference=None):
         fig2.tight_layout()
         fn2 = os.path.join(pout, 'correlation_%s.png' % _meta['name'].iloc[0])
         fig2.savefig(fn2)
+
+
+def poster_plot(glcdict, pout, y_len=1):
+
+    paretodict = pareto(glcdict)
+
+    for glid, df in glcdict.items():
+
+        # take care of merged glaciers
+        rgi_id = glid.split('_')[0]
+
+        fig1, ax1 = plt.subplots(figsize=[17, 8])
+
+        # grey lines
+        nolbl = df.loc[:, ~df.columns.isin(['obs', paretodict[glid]])]. \
+            rolling(y_len, center=True).mean().copy()
+        nolbl.columns = ['' for i in range(len(nolbl.columns))]
+
+        nolbl.plot(ax=ax1, linewidth=0.5, color='0.75')
+
+        # lot observations
+        df.loc[:, 'obs'].rolling(1, min_periods=1).mean(). \
+            plot(ax=ax1, color='k', marker='o', label='Observed length change')
+
+        # best run
+        # get parameters
+        params = ast.literal_eval('{' + paretodict[glid] + '}')
+
+        legend = ('Best simulated length change:\n\n'
+                  'Precipitation scaling factor: %.1f\n'
+                  'Glen A factor: %.1f\n'
+                  'Mass balance bias: %.1f [m w.e. a' r'$^{-1}$' ']'
+                  % (params['prcp_scaling_factor'],
+                     params['glena_factor'],
+                     params['mbbias']/1000))
+
+        df.loc[:, paretodict[glid]].rolling(y_len, center=True). \
+            mean().plot(ax=ax1, linewidth=3, color='C0', label=legend)
+
+        name = glcnames(glid)
+
+        # add merged tributary
+        if '_merged' in glid:
+            mid = merged_ids(glid)
+
+            if 'Tschierva' in name:
+                trib = 'Tschierva'
+            elif 'Mine' in name:
+                trib = 'Mont Mine'
+
+            glcdict[mid].loc[:, 'obs'].rolling(1, min_periods=1).mean(). \
+                plot(ax=ax1, color='k', marker='^',
+                     label='Observed length change at %s' % trib)
+
+            trib_main = glcdict[mid].loc[:, paretodict[glid]]. \
+                rolling(y_len, center=True).mean()
+            trib_main[trib_main != 0].\
+                plot(ax=ax1, linewidth=3, color='C2',
+                     label='Simulated length change at %s' % trib)
+
+            """
+            trib_trib = glcdict[mid].loc[:, paretodict[mid]]. \
+                rolling(y_len, center=True).mean()
+            trib_trib[trib_trib != 0].plot(ax=ax1, linewidth=3, color='C2',
+                                           label='_')
+            """
+
+        ax1.set_title('%s' % name, fontsize=30)
+        ax1.set_ylabel('relative length change [m]', fontsize=26)
+        ax1.set_xlabel('Year', fontsize=26)
+        ax1.set_xlim([1850, 2010])
+        ax1.set_ylim([-4000, 1000])
+        ax1.tick_params(axis='both', which='major', labelsize=22)
+        ax1.grid(True)
+        ax1.legend(fontsize=20, loc=3)
+        fig1.tight_layout()
+        fn1 = os.path.join(pout, 'histalp_%s.png' % name.split()[0])
+        fn1b = os.path.join(pout, 'histalp_%s.pdf' % name.split()[0])
+        fig1.savefig(fn1)
+        fig1.savefig(fn1b)
+
+        #add: legend entry: "PRECIP x, Glen A y, MB bias z"
