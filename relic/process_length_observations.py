@@ -77,6 +77,7 @@ def download_leclercq(firstyear=None):
         if dfmeta.loc[nr, 'name'] == 'U Grindelwald':
             # lets linearely interpolate Unterer Grindelwald glacier....
             dfout.loc[nr, 2003] = -2027.0
+            dfout.loc[nr, 1983:2003] = dfout.loc[nr, 1983:2003].interpolate()
             glc.loc[2003] = -2027.0
 
         if firstyear is not None:
@@ -154,26 +155,55 @@ def add_custom_length(meta, data, ids):
 
         if rgi == 'RGI60-11.02051':
             name = 'Vadret da Tschierva'
+            merge_id = 'RGI60-11.02119'  # Roseg
         elif rgi == 'RGI60-11.02709':
             name = 'Glacier du Mont Miné'
+            merge_id = 'RGI60-11.02715'  # Ferpecle
         else:
             raise ValueError('no data implemented')
 
+        # LID of the glacier with the longer observation record
+        merge_lid = meta.loc[meta.RGI_ID == merge_id].index[0]
+
+        # select glacier from glamos data
         glc = glamos.loc[glamos['glacier name'] == name, :]
 
-        tmp = pd.DataFrame([], columns=['dl'])
-        tmp['dl'] = glc['length change'].astype(float).cumsum()
-        tmp.index = pd.DatetimeIndex(glc['end date of observation']).year
+        # find first year of short observation
+        t0_short = pd.DatetimeIndex(glc['start date of observation']).year[0]
+        # prepare short length change time series
+        dl_short = glc['length change'].astype(float).cumsum()
+        yr_short = pd.DatetimeIndex(glc['end date of observation']).year
+        dl_short.index = yr_short
 
-        t0 = pd.DatetimeIndex(glc['start date of observation']).year[0]
-        tmp.loc[t0, 'dl'] = 0
-        tmp.sort_index(inplace=True)
+        # new dataframe for complete time series from the other glacier
+        tmp = data.loc[merge_lid].copy()
+
+        # find closest point in longer time series
+        try:
+            _ = data.loc[merge_lid].dropna().loc[t0_short]
+            t0_long = t0_short
+        except KeyError:
+            minarg = np.abs(data.loc[merge_lid, t0_short-5:t0_short+5].
+                            dropna().index - t0_short).argmin()
+            t0_long = data.loc[merge_lid, t0_short-5:t0_short+5].\
+                dropna().index[minarg]
+            print('name t0 = %d (instead of %d)' % (t0_long, t0_short))
+
+        # reference lenght at splitting time
+        dl_ref = tmp.loc[t0_long]
+
+        # reset data from t0_short onwards
+        tmp.loc[t0_short:] = np.nan
+
+        # new length is ref + dl_short
+        tmp.loc[t0_short] = dl_ref
+        tmp.loc[dl_short.loc[:2010].index] = dl_ref + dl_short.loc[:2010]
 
         assert (tmp.index.unique() == tmp.index).all()
 
         # find 2003 length
         try:
-            dl2003 = tmp.loc[2003].iloc[0]
+            dl2003 = tmp.dropna().loc[2003]
         except KeyError:
             minarg = np.abs(tmp.loc[2000:2006].dropna().index-2003).argmin()
             dl2003 = tmp.loc[2000:2006].dropna().iloc[minarg]
@@ -181,11 +211,11 @@ def add_custom_length(meta, data, ids):
         meta.loc[-1*int(rgi.split('.')[-1])] = {'name': name,
                                                 'lon': -99,
                                                 'lat': -99,
-                                                'first': t0,
+                                                'first': tmp.dropna().index[0],
                                                 'measurements': len(tmp),
                                                 'dL2003': dl2003,
                                                 'RGI_ID': rgi}
 
-        data.loc[-1*int(rgi.split('.')[-1])] = tmp['dl']
+        data.loc[-1*int(rgi.split('.')[-1])] = tmp.values
 
     return meta, data

@@ -7,7 +7,8 @@ import numpy as np
 import os
 import ast
 
-from relic.postprocessing import calc_acdc, pareto, merged_ids, glcnames
+from relic.postprocessing import (calc_acdc, pareto, merged_ids, glcnames,
+                                  mae_all, mae_diff_mean, mae_diff_yearly)
 from relic.preprocessing import get_leclercq_observations
 from relic.process_length_observations import add_custom_length
 
@@ -380,14 +381,21 @@ def plt_correlation(runs, pout, y_len=1, y_corr=10, reference=None):
 
 def poster_plot(glcdict, pout, y_len=1):
 
-    paretodict = pareto(glcdict)
+    maedyr = 5
+
+    paretodict = pareto(glcdict, maedyr)
+    # xkcdplot(glcdict, paretodict)
 
     for glid, df in glcdict.items():
+
+        if df.shape[1] <= 2:
+            print('foo')
+            continue
 
         # take care of merged glaciers
         rgi_id = glid.split('_')[0]
 
-        fig1, ax1 = plt.subplots(figsize=[17, 8])
+        fig1, ax1 = plt.subplots(figsize=[17, 7])
 
         # grey lines
         nolbl = df.loc[:, ~df.columns.isin(['obs', paretodict[glid]])]. \
@@ -396,29 +404,58 @@ def poster_plot(glcdict, pout, y_len=1):
 
         nolbl.plot(ax=ax1, linewidth=0.5, color='0.75')
 
-        # lot observations
+        # plot observations
         df.loc[:, 'obs'].rolling(1, min_periods=1).mean(). \
             plot(ax=ax1, color='k', marker='o', label='Observed length change')
+        if glid == 'RGI60-11.01346':
+            df.loc[1984:2003, 'obs'].rolling(1, min_periods=1).mean(). \
+                plot(ax=ax1, color='0.4', marker='o',
+                     label='Linear interpolation to 2013 length')
+
+        # objective 1
+        maes = mae_all(df, normalised=True).idxmin()
+        df.loc[:, maes].rolling(y_len, center=True). \
+            mean().plot(ax=ax1, linewidth=2, color='C0',
+                        label='Best result for Objective 1')
+
+        # objective 2
+        maediff = mae_diff_yearly(df, maedyr, normalised=True).idxmin()
+        df.loc[:, maediff].rolling(y_len, center=True). \
+            mean().plot(ax=ax1, linewidth=2, color='C1',
+                        label='Best result for Objective 2')
+
+        # OGGM standard
+        for run in df.columns:
+            if run == 'obs':
+                continue
+            para = ast.literal_eval('{' + run + '}')
+            if ((np.abs(para['prcp_scaling_factor']-1.8) < 0.01) and
+                    (para['mbbias'] == 0) and
+                    (para['glena_factor'] == 1.5)):
+                df.loc[:, run].rolling(y_len, center=True). \
+                    mean().plot(ax=ax1, linewidth=1, color='k',
+                                label='OGGM standard parameters')
 
         # best run
         # get parameters
         params = ast.literal_eval('{' + paretodict[glid] + '}')
 
-        legend = ('Best simulated length change:\n\n'
-                  'Precipitation scaling factor: %.1f\n'
-                  'Glen A factor: %.1f\n'
-                  'Mass balance bias: %.1f [m w.e. a' r'$^{-1}$' ']'
+        legend = ('\nBest simulated length change:\n'
+                  '%.1f precipitation scaling factor\n'
+                  '%.1f Glen A factor\n'
+                  '%.1f [m w.e. a' r'$^{-1}$' '] mass balance bias'
                   % (params['prcp_scaling_factor'],
                      params['glena_factor'],
                      params['mbbias']/1000))
 
         df.loc[:, paretodict[glid]].rolling(y_len, center=True). \
-            mean().plot(ax=ax1, linewidth=3, color='C0', label=legend)
+            mean().plot(ax=ax1, linewidth=4, color='C2',
+                        label='Best simulated length change:')
 
         name = glcnames(glid)
 
         # add merged tributary
-        if '_merged' in glid:
+        if 'XXX_merged' in glid:
             mid = merged_ids(glid)
 
             if 'Tschierva' in name:
@@ -447,14 +484,148 @@ def poster_plot(glcdict, pout, y_len=1):
         ax1.set_ylabel('relative length change [m]', fontsize=26)
         ax1.set_xlabel('Year', fontsize=26)
         ax1.set_xlim([1850, 2010])
-        ax1.set_ylim([-4000, 1000])
+        ax1.set_ylim([-3500, 500])
         ax1.tick_params(axis='both', which='major', labelsize=22)
         ax1.grid(True)
-        ax1.legend(fontsize=20, loc=3)
+
+        l1 = ('%.1f precipitation scaling factor' %
+              params['prcp_scaling_factor'])
+        l2 = '%.1f Glen A factor' % params['glena_factor']
+        l3 = ('%.1f [m w.e. a' r'$^{-1}$' '] mass balance bias' %
+              (params['mbbias']/1000))
+
+        plt.plot(0, 0, color='w', alpha=0, label=l1)
+        plt.plot(0, 0, color='w', alpha=0, label=l2)
+        plt.plot(0, 0, color='w', alpha=0, label=l3)
+
+        hix = 4
+        if glid == 'RGI60-11.01346':
+            plt.plot(0, 0, color='w', alpha=0, label=' ')
+            hix = 5
+
+        hdl, lbl = ax1.get_legend_handles_labels()
+        hdl2 = np.concatenate(([hdl[-hix]], hdl[-hix+1:],
+                               hdl[0:-hix]), axis=0)
+        lbl2 = np.concatenate(([lbl[-hix]], lbl[-hix+1:],
+                               lbl[0:-hix]), axis=0)
+        ax1.legend(hdl2, lbl2,
+                   fontsize=16, loc=3, ncol=2)
+
         fig1.tight_layout()
-        fn1 = os.path.join(pout, 'histalp_%s.png' % name.split()[0])
-        fn1b = os.path.join(pout, 'histalp_%s.pdf' % name.split()[0])
+        # fn1 = os.path.join(pout, 'histalp_%s.png' % name.split()[0])
+        fn1 = os.path.join(pout, 'histalp_%s.png' % glid)
+        # fn1b = os.path.join(pout, 'histalp_%s.pdf' % name.split()[0])
+        fig1.savefig(fn1)
+        # fig1.savefig(fn1b)
+
+
+def xkcdplot(glcs, paretodict):
+
+    glid = 'RGI60-11.02119_merged'
+
+    df = glcs[glid]
+    run = paretodict[glid]
+
+    now = df.loc[:, run].copy()
+    now.loc[1855] = -5
+    now.loc[1857] = -10
+    now.loc[1860] = -15
+
+    #now.loc[1870:1885] *= np.cos(np.linspace(0, np.pi/3, 16))
+    #now.loc[1885:1910] *= np.cos(np.linspace(np.pi/3, 0, 26))
+    now.loc[1870:1910] += np.append(np.linspace(0, 500, 16),
+                                    np.linspace(500, 0, 25))
+    now.loc[1887:1903] += np.append(np.linspace(0, 200, 7),
+                                    np.linspace(200, 0, 10))
+
+    now.loc[1915:1961] -= np.append(np.linspace(0, 400, 12),
+                                    np.linspace(400, 0, 35))
+    now.loc[1937:1955] -= np.linspace(0, 400, 19)
+    now.loc[1956:1961] -= np.linspace(400, 0, 6)
+
+    now.loc[1960] -= 70
+
+    now.loc[1973:1993] += np.append(np.linspace(0, 300, 11),
+                                    np.linspace(300, 0, 10))
+
+    now = now.rolling(10, center=True).mean()
+
+    ertime = np.arange(1860, 2010, 10)
+
+    err = df.loc[:, 'obs'].interpolate().loc[ertime] - now.loc[ertime]
+
+    err += np.random.randint(50, 100, len(ertime))
+
+    x=np.array([1700, 1750, 1800, 1860])
+    y=np.array([-3000, -4000, -2000, -70])
+    pf = np.polyfit(x,y,5)
+    p=np.poly1d(pf)
+    past = pd.DataFrame(p(np.arange(1710, 1861)), index=np.arange(1710, 1861))
+    past[0] += np.random.randint(-30, 30, len(past))
+
+    x=np.array([2006, 2020, 2030, 2060, 2100])
+    y=np.array([-2600, -3500, -4000, -4200, -4300])
+    pf = np.polyfit(x,y,3)
+    p=np.poly1d(pf)
+    fut = pd.DataFrame(p(np.arange(2006, 2100)), index=np.arange(2006, 2100))
+    fut[0] += np.random.randint(-30, 30, len(fut))
+
+    with plt.xkcd():
+        fig1, ax1 = plt.subplots(figsize=[17, 6])
+
+        df.loc[:, 'obs'].rolling(1, min_periods=1).mean(). \
+            plot(ax=ax1, marker='o', label='Observed length change',
+                 markeredgecolor='k', color='k')
+
+        past.plot(ax=ax1, color='C0', linewidth=4, label=' ', legend=False)
+        fut.plot(ax=ax1, color='C0', linewidth=4, label=' ', legend=False)
+
+        now.plot(ax=ax1, linewidth=4, color='C2',
+                 label='Best simulated length change:')
+
+        ax1.errorbar(ertime, now.loc[ertime], yerr=err, fmt='none', color='C2',
+                     linewidth=4)
+
+        ax1.errorbar(1740, -4000, yerr=500, xerr=12, fmt='none', color='C3',
+                     linewidth=5)
+        ax1.errorbar(1795, -2000, yerr=400, xerr=5, fmt='none', color='C3',
+                     linewidth=5)
+        ax1.errorbar(1851, -10, yerr=100, xerr=3, fmt='none', color='C3',
+                     linewidth=5)
+
+        ax1.annotate('error?', (1810, -2000), (1870, -3500),
+                     arrowprops={'width': 4, 'facecolor': 'black'},
+                     fontsize=36, fontweight='bold')
+
+        ax1.annotate('.', (2020, -4000), (1920, -3500),
+                     arrowprops={'width': 4, 'facecolor': 'black'},
+                     fontsize=0.1, color='white')
+
+        ax1.text(1878, -3000, 'model', fontweight='bold', fontsize=36,
+                 color='C0')
+
+        ax1.annotate('proxy', (1740, -3500), (1730, -500),
+                     arrowprops={'width': 4, 'facecolor': 'C3'},
+                     fontsize=28, fontweight='bold', color='C3')
+        ax1.annotate('.', (1790, -1950), (1760, -500),
+                     arrowprops={'width': 4, 'facecolor': 'C3'},
+                     fontsize=0.1, fontweight='bold', color='white')
+        ax1.annotate('.', (1845, -50), (1760, -400),
+                     arrowprops={'width': 4, 'facecolor': 'C3'},
+                     fontsize=0.1, fontweight='bold', color='white')
+
+        ax1.set_ylabel('glacier length change', fontsize=26)
+        ax1.set_xlabel('time', fontsize=26)
+        ax1.set_xlim([1700, 2100])
+        ax1.set_ylim([-5000, 500])
+        ax1.set_xticklabels([''])
+        ax1.set_yticklabels([''])
+        ax1.tick_params(axis='both', which='major', labelsize=22)
+
+        pout = '/home/matthias/length_change_1850/multi/array'
+        fig1.tight_layout()
+        fn1 = os.path.join(pout, 'xkcd.png')
+        fn1b = os.path.join(pout, 'xkcd.pdf')
         fig1.savefig(fn1)
         fig1.savefig(fn1b)
-
-        #add: legend entry: "PRECIP x, Glen A y, MB bias z"
+        plt.show()

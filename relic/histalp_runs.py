@@ -552,18 +552,19 @@ def slurm_array_multi_parameter_run(params, gdirs, meta, obs, rgiregion=11,
         execute_entity_task(task, gdirs)
 
     # check for glaciers to merge:
-    id_pairs = [['RGI60-11.02119', 'RGI60-11.02051', 8],   # ferpecle, mine
-                ['RGI60-11.02715', 'RGI60-11.02709', 2.5]]  # roseg,tschier
+    id_pairs = [['RGI60-11.02051', 'RGI60-11.02119', 8],   # tschier, roseg
+                ['RGI60-11.02709', 'RGI60-11.02715', 2.5]]  # mine, ferpec
     gdirs_merged = []
-    gdirs2sim = gdirs.copy()
+    # gdirs2sim = gdirs.copy()
     for ids in id_pairs:
         if (ids[0] in gids) and (ids[1] in gids):
-            gd2merge = [gd for gd in gdirs2sim if gd.rgi_id in ids]
-            gdirs2sim = [gd for gd in gdirs2sim if gd.rgi_id not in ids]
+            gd2merge = [gd for gd in gdirs if gd.rgi_id in ids]
+            # gd2merge = [gd for gd in gdirs2sim if gd.rgi_id in ids]
+            # gdirs2sim = [gd for gd in gdirs2sim if gd.rgi_id not in ids]
             gdir_merged = merge_glacier_tasks(gd2merge, ids[0],
                                               buffer=ids[2])
-            """
             # uncomment to visually inspect the merged glacier
+            """
             import matplotlib.pyplot as plt
             from oggm import graphics
             f, ax = plt.subplots(1, 1, figsize=(12, 12))
@@ -571,13 +572,16 @@ def slurm_array_multi_parameter_run(params, gdirs, meta, obs, rgiregion=11,
                                       use_model_flowlines=True, ax=ax)
             plt.show()
             """
+
             gdirs_merged.append(gdir_merged)
 
-    gdirs2sim += gdirs_merged
+    # gdirs2sim += gdirs_merged
+    gdirs += gdirs_merged
 
     # do the actual simulations
     rval = execute_entity_task(simple_spinup_plus_histalp,
-                               gdirs2sim, meta=meta, obs=obs,
+                               # gdirs2sim, meta=meta, obs=obs,
+                               gdirs, meta=meta, obs=obs,
                                use_systematic_spinup=
                                use_systematic_spinup,
                                mb_bias=mbbias
