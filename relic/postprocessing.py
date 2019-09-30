@@ -262,7 +262,7 @@ def pareto(glcdict, maedyr):
 
         paretodict[glc] = edisx
 
-        #plot_pareto(glc, edisx, maes, maediff)
+        plot_pareto(glc, edisx, maes, maediff)
 
     return paretodict
 
@@ -347,8 +347,8 @@ def plot_pareto(glc, edisx, maes, maediff):
 
     ax1.grid(True)
     fig1.tight_layout()
-    pout = '/home/matthias/length_change_1850/multi/array/pareto'
-    fn1 = os.path.join(pout, 'pareto_%s.png' % name.split()[0])
-    fn2 = os.path.join(pout, 'pareto_%s.pdf' % name.split()[0])
+    pout = '/home/matthias/length_change_1850/multi/array/190926/pareto'
+    fn1 = os.path.join(pout, 'pareto_%s.png' % glc)
+    # fn2 = os.path.join(pout, 'pareto_%s.pdf' % name.split()[0])
     fig1.savefig(fn1)
-    fig1.savefig(fn2)
+    # fig1.savefig(fn2)

@@ -91,45 +91,6 @@ def simple_spinup(gdir, meta):
     return tbias
 
 
-def given_spinup_tbias(gdir, meta=None, data=None):
-
-    obs = data.loc[meta.index].iloc[0].copy()
-    obs_ye = obs.dropna().index[-1]
-    obs_dl = obs.dropna().iloc[-1]
-
-    # --------- HOW SHALL WE SPIN ---------------
-    # how long are we at initialization
-    fls = gdir.read_pickle('model_flowlines')
-    len2003 = fls[-1].length_m
-    # how long shall we go? MINUS for positive length change!
-    dl = -meta['dL2003'].iloc[0]
-    # mass balance model
-    mb = MultipleFlowlineMassBalance(gdir, fls=fls,
-                                     mb_model_class=ConstantMassBalance)
-
-    # for HEF, do something else afterwards
-    tbias = -0.47
-    # --------- SPIN IT UP FOR REAL ---------------
-    minimize_dl(tbias, mb, fls, dl, len2003, None, gdir, False)
-
-    tmp_mod = FileModel(gdir.get_filepath('model_run',
-                                          filesuffix='_spinup'))
-    tmp_mod.run_until(tmp_mod.last_yr)
-
-    # --------- HIST IT DOWN ---------------
-    tasks.run_from_climate_data(gdir, ys=meta['first'].iloc[0], ye=obs_ye,
-                                init_model_fls=tmp_mod.fls,
-                                output_filesuffix='_histalp')
-
-    # compare hist run to observations
-    ds = xr.open_dataset(gdir.get_filepath('model_diagnostics',
-                                           filesuffix='_histalp'))
-    histalp_dl = ds.length_m.values[-1] - ds.length_m.values[0]
-    delta = (histalp_dl - obs_dl)**2
-    print('delta: %.4f' % delta)
-    return tbias
-
-
 @entity_task(log)
 def relic_from_climate_data(gdir, ys=None, ye=None, min_ys=None,
                             store_monthly_step=False,
@@ -293,92 +254,6 @@ def simple_spinup_plus_histalp(gdir, meta=None, obs=None, mb_bias=None,
     """
 
     return rval
-
-
-def vary_mass_balance_bias(gdirs, meta, obs, mbbias=None):
-
-    if mbbias is None:
-        print('use optimization to find a mbbias')
-    else:
-
-        rval_dict = {}
-        for mb in mbbias:
-            # actual spinup and histalp
-            rval_dict[mb] = execute_entity_task(simple_spinup_plus_histalp,
-                                                gdirs, meta=meta, obs=obs,
-                                                mb_bias=mb)
-
-    return rval_dict
-
-
-def vary_precipitation_sf(gdirs, meta, obs, pcpsf=None,
-                          use_systematic_spinup=False):
-
-    cfg.PARAMS['run_mb_calibration'] = True
-
-    if pcpsf is None:
-        pcpsf = np.arange(0.5, 3.25, 0.25)
-
-    rval_dict = {}
-
-    for sf in pcpsf:
-
-        cfg.PARAMS['prcp_scaling_factor'] = sf
-        log.info('Precipitation sf = %.1e' % sf)
-
-        # finish OGGM tasks
-        compute_ref_t_stars(gdirs)
-        task_list = [tasks.local_t_star,
-                     tasks.mu_star_calibration,
-                     tasks.prepare_for_inversion,
-                     tasks.mass_conservation_inversion,
-                     tasks.filter_inversion_output,
-                     tasks.init_present_time_glacier
-                     ]
-        for task in task_list:
-            execute_entity_task(task, gdirs)
-
-        # actual spinup and histalp
-        rval_dict[sf] = execute_entity_task(simple_spinup_plus_histalp,
-                                            gdirs, meta=meta, obs=obs,
-                                            use_systematic_spinup=use_systematic_spinup
-                                            )
-    return rval_dict
-
-
-def vary_precipitation_gradient(gdirs, meta, obs, prcp_gradient=None,
-                                use_systematic_spinup=False):
-
-    cfg.PARAMS['run_mb_calibration'] = True
-
-    if prcp_gradient is None:
-        # vary gradient between 0% and 100% per 1000m
-        prcp_gradient = np.nan  # np.arange(0, 1.1, 0.1)*1e-3
-
-    rval_dict = {}
-    for grad in prcp_gradient:
-        # actual spinup and histalp
-        cfg.PARAMS['prcp_gradient'] = grad
-        log.info('Precipitation gradient = %.1e' % grad)
-
-        # finish OGGM tasks
-        compute_ref_t_stars(gdirs)
-        task_list = [tasks.local_t_star,
-                     tasks.mu_star_calibration,
-                     tasks.prepare_for_inversion,
-                     tasks.mass_conservation_inversion,
-                     tasks.filter_inversion_output,
-                     tasks.init_present_time_glacier
-                     ]
-        for task in task_list:
-            execute_entity_task(task, gdirs)
-
-        rval_dict[grad] = execute_entity_task(simple_spinup_plus_histalp,
-                                              gdirs, meta=meta, obs=obs,
-                                              use_systematic_spinup=use_systematic_spinup
-                                              )
-
-    return rval_dict
 
 
 def multi_parameter_run(paramdict, gdirs, meta, obs, rgiregion=11,
