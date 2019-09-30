@@ -388,10 +388,6 @@ def poster_plot(glcdict, pout, y_len=1):
 
     for glid, df in glcdict.items():
 
-        if df.shape[1] <= 2:
-            print('foo')
-            continue
-
         # take care of merged glaciers
         rgi_id = glid.split('_')[0]
 
