@@ -124,8 +124,9 @@ def relic_from_climate_data(gdir, ys=None, ye=None, min_ys=None,
     if mass_balance_bias is not None:
         if '_merged' in gdir.rgi_id:
             fls = gdir.read_pickle('model_flowlines')
-            for fl in fls:
-                flsfx = '_' + fl.rgi_id
+            flids = np.unique([fl.rgi_id for fl in fls])
+            for fl in flids:
+                flsfx = '_' + fl
                 df = gdir.read_json('local_mustar', filesuffix=flsfx)
                 df['bias'] += mass_balance_bias
                 gdir.write_json(df, 'local_mustar', filesuffix=flsfx)
