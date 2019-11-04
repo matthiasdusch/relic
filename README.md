@@ -1,4 +1,4 @@
 # relic
-REconstructing gLacIer length Change
+REconstructing gLacIer Change
 
 WIP
