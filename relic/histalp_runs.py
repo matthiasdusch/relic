@@ -3,7 +3,6 @@ import pandas as pd
 import xarray as xr
 import logging
 import itertools
-import ast
 
 from oggm import tasks, cfg
 from oggm.core.flowline import FileModel, robust_model_run
@@ -17,78 +16,11 @@ from oggm import entity_task
 from oggm.exceptions import InvalidParamsError
 from oggm.utils import get_ref_mb_glaciers_candidates
 
-from relic.spinup import spinup_with_tbias, minimize_dl, systematic_spinup
+from relic.spinup import systematic_spinup
 from relic.postprocessing import relative_length_change, mae, r2
 
 # Module logger
 log = logging.getLogger(__name__)
-
-
-def minimize_glena(glena, gdir, meta, obs_ye, obs_dl, optimization):
-
-    # finish OGGM tasks
-    tasks.mass_conservation_inversion(gdir, glen_a=glena)
-    tasks.filter_inversion_output(gdir)
-    tasks.init_present_time_glacier(gdir)
-
-    # --------- HOW SHALL WE SPIN ---------------
-
-    # how long are we at initialization
-    fls = gdir.read_pickle('model_flowlines')
-    len2003 = fls[-1].length_m
-    # how long shall we go? MINUS for positive length change!
-    dl = -meta['dL2003'].iloc[0]
-
-    tbias = spinup_with_tbias(gdir, fls, dl, len2003, glena=glena)
-    tmp_mod = FileModel(gdir.get_filepath('model_run',
-                                          filesuffix='_spinup_%.3e' % glena))
-    tmp_mod.run_until(tmp_mod.last_yr)
-
-    # --------- HIST IT DOWN ---------------
-    tasks.run_from_climate_data(gdir, ys=meta['first'].iloc[0], ye=obs_ye,
-                                init_model_fls=tmp_mod.fls,
-                                output_filesuffix='_histalp_%.3e' % glena,
-                                glen_a=glena)
-
-    # assert that global glen_a is still unused
-    assert np.isnan(cfg.PARAMS['glen_a'])
-
-    # compare hist run to observations
-    ds = xr.open_dataset(gdir.get_filepath('model_diagnostics',
-                                           filesuffix='_histalp_%.3e' % glena))
-    histalp_dl = ds.length_m.values[-1] - ds.length_m.values[0]
-    delta = (histalp_dl - obs_dl)**2
-    print('glenA: %.2e  delta: %.4f' % (glena, delta))
-    if optimization is True:
-        return delta
-    else:
-        return tbias
-    """
-    else:
-        dlhist = ds.length_m.to_dataframe()['length_m']
-        # set first year to 0
-        dlhist -= dlhist.iloc[0]
-        # add actual difference between spinup and obs
-        spin_offset = (tmp_mod.length_m-len2003) - dl
-        # spin_offset is positive if spinoff is to large
-        dlhist += spin_offset
-
-        return dlhist
-    """
-
-
-def simple_spinup(gdir, meta):
-
-    # --------- HOW SHALL WE SPIN ---------------
-
-    # how long are we at initialization
-    fls = gdir.read_pickle('model_flowlines')
-    len2003 = fls[-1].length_m
-    # how long shall we go? MINUS for positive length change!
-    dl = -meta['dL2003'].iloc[0]
-
-    tbias = spinup_with_tbias(gdir, fls, dl, len2003)
-    return tbias
 
 
 @entity_task(log)
@@ -150,30 +82,27 @@ def relic_from_climate_data(gdir, ys=None, ye=None, min_ys=None,
                             **kwargs)
 
 
-def simple_spinup_plus_histalp(gdir, meta=None, obs=None, mb_bias=None,
-                               use_systematic_spinup=False):
-
+def spinup_plus_histalp(gdir, meta=None, obs=None, mb_bias=None):
     # take care of merged glaciers
     rgi_id = gdir.rgi_id.split('_')[0]
 
     # select meta and obs
     meta = meta.loc[meta['RGI_ID'] == rgi_id].copy()
     obs = obs.loc[meta.index].iloc[0].copy()
-    obs_ye = obs.dropna().index[-1]
+    # we want to simulate as much as possible -> histalp till 2014
+    # obs_ye = obs.dropna().index[-1]
+    obs_ye = 2014
 
     # --------- SPIN IT UP ---------------
-    if use_systematic_spinup:
-        tbias = systematic_spinup(gdir, meta)
+    tbias = systematic_spinup(gdir, meta)
 
-        if tbias == -999:
+    if tbias == -999:
 
-            rval = {'rgi_id': gdir.rgi_id, 'name': meta['name'].iloc[0],
-                    'histalp': np.nan,
-                    'spinup': np.nan,
-                    'tbias': np.nan, 'tmean': np.nan, 'pmean': np.nan}
-            return rval
-    else:
-        tbias = simple_spinup(gdir, meta)
+        rval = {'rgi_id': gdir.rgi_id, 'name': meta['name'].iloc[0],
+                'histalp': np.nan,
+                'spinup': np.nan,
+                'tbias': np.nan, 'tmean': np.nan, 'pmean': np.nan}
+        return rval
 
     # --------- GET SPINUP STATE ---------------
     tmp_mod = FileModel(gdir.get_filepath('model_run',
@@ -218,8 +147,9 @@ def simple_spinup_plus_histalp(gdir, meta=None, obs=None, mb_bias=None,
     rval['rel_dl'] = relative_length_change(meta, rval['spinup'],
                                             rval['histalp'])
 
-    rval['mae'] = mae(obs, rval['rel_dl'])
-    rval['r2'] = r2(obs, rval['histalp'])
+    # TODO: EXTRACT and ADD thickness information here
+    # TODO -> add year and location of ice thickness information to meta data of each glacier
+    # TODO if glacier has thickness info, run filemodel to the respective years and extract fl.thick["lon,lat"]
 
     # if merged, store tributary flowline change as well
     if '_merged' in gdir.rgi_id:
@@ -237,28 +167,17 @@ def simple_spinup_plus_histalp(gdir, meta=None, obs=None, mb_bias=None,
             fmod.run_until(yr)
             trib.loc[yr] = fmod.fls[flix].length_m
 
-        #assert trib.iloc[0] == trib.max(), ('the tributary was not connected '
-        #                                    'to the main glacier at the start '
+        # assert trib.iloc[0] == trib.max(), ('the tributary was not connected'
+        #                                    'to the main glacier at the start'
         #                                    'of this histalp run')
 
         trib -= trib.iloc[0]
         rval['trib_dl'] = trib
 
-    """
-    except (FloatingPointError, RuntimeError) as err:
-
-        rval = {'rgi_id': gdir.rgi_id, 'name': meta['name'].iloc[0],
-                'histalp': np.nan,
-                'spinup': np.nan,
-                'tbias': np.nan, 'tmean': np.nan, 'pmean': np.nan}
-        pass
-    """
-
     return rval
 
 
-def multi_parameter_run(paramdict, gdirs, meta, obs, rgiregion=11,
-                        use_systematic_spinup=False):
+def multi_parameter_run(paramdict, gdirs, meta, obs, runid=None, rgiregion=11):
 
     # we want to run the mb calibration every time
     cfg.PARAMS['run_mb_calibration'] = True
@@ -282,16 +201,22 @@ def multi_parameter_run(paramdict, gdirs, meta, obs, rgiregion=11,
     log.info('Multi parameter run with >>> %s <<< parameters started.' %
              len(paramcombi))
 
+    # set some default parameters which might be changed by the paramdict
     # set mass balance bias to None, will be changed if passed as a parameter
     mbbias = None
-
     # default glena
     default_glena = cfg.PARAMS['glen_a']
-
     # default sliding
     default_fs = 5.7e-20
 
+    # if a runid is passed, run only this item in the paramcombi
+    # runids (= SLURM JOBID) start at 1 !
+    if runid is not None:
+        paramcombi = [paramcombi[runid-1]]
+
+    # rval_dict is our output
     rval_dict = {}
+    # TODO think of something nicer! NetCDF or a like
 
     # loop over all combinations
     for nr, combi in enumerate(paramcombi):
@@ -314,6 +239,9 @@ def multi_parameter_run(paramdict, gdirs, meta, obs, rgiregion=11,
             else:
                 raise ValueError('Parameter not understood')
 
+        if runid is not None:
+            nr = runid-1
+
         log.info('Current parameter combination: %s' % str(combi))
         log.info('This is combination %d out of %d.' % (nr+1, len(paramcombi)))
 
@@ -333,11 +261,9 @@ def multi_parameter_run(paramdict, gdirs, meta, obs, rgiregion=11,
         id_pairs = [['RGI60-11.02119', 'RGI60-11.02051', 8],   # ferpecle, mine
                     ['RGI60-11.02715', 'RGI60-11.02709', 2.5]]  # roseg,tschier
         gdirs_merged = []
-        gdirs2sim = gdirs.copy()
         for ids in id_pairs:
             if (ids[0] in gids) and (ids[1] in gids):
-                gd2merge = [gd for gd in gdirs2sim if gd.rgi_id in ids]
-                gdirs2sim = [gd for gd in gdirs2sim if gd.rgi_id not in ids]
+                gd2merge = [gd for gd in gdirs if gd.rgi_id in ids]
                 gdir_merged = merge_glacier_tasks(gd2merge, ids[0],
                                                   buffer=ids[2])
                 """
@@ -351,120 +277,19 @@ def multi_parameter_run(paramdict, gdirs, meta, obs, rgiregion=11,
                 """
                 gdirs_merged.append(gdir_merged)
 
-        gdirs2sim += gdirs_merged
+        # TODO maybe really do not run unmerged glaciers -> remove gd2merge ones
+        # but nor from gdirs, rather make extra list gdirs2run
+
+        gdirs += gdirs_merged
 
         # do the actual simulations
-        rval = execute_entity_task(simple_spinup_plus_histalp,
-                                   gdirs2sim, meta=meta, obs=obs,
-                                   use_systematic_spinup=
-                                   use_systematic_spinup,
+        rval = execute_entity_task(spinup_plus_histalp,
+                                   gdirs, meta=meta, obs=obs,
                                    mb_bias=mbbias
                                    )
         # remove possible Nones
         rval = [rl for rl in rval if rl is not None]
 
         rval_dict[str(combi)] = rval
-
-    return rval_dict
-
-
-def slurm_array_multi_parameter_run(params, gdirs, meta, obs, rgiregion=11,
-                                    use_systematic_spinup=False):
-    # we want to run the mb calibration every time
-    cfg.PARAMS['run_mb_calibration'] = True
-    # and we want to use all glaciers for that (from one region)
-    refids = get_ref_mb_glaciers_candidates()
-    if rgiregion is not None:
-        refids = [rid for rid in refids if '-%d.' % rgiregion in rid]
-    # but do leave out the actual glaciers
-    gids = [gd.rgi_id for gd in gdirs]
-    refids = [rid for rid in refids if rid not in gids]
-
-    # initialize the reference glaciers
-    ref_gdirs = init_glacier_regions(rgidf=refids,
-                                     from_prepro_level=3, prepro_border=10)
-
-    # set mass balance bias to None, will be changed if passed as a parameter
-    mbbias = None
-
-    # default glena
-    default_glena = 2.4e-24
-
-    # default sliding
-    default_fs = 5.7e-20
-
-    rval_dict = {}
-
-    # set all parameters
-    for key, val in params.items():
-
-        # here we se cfg.PARAMS values
-        if key == 'glena_factor':
-            cfg.PARAMS['glen_a'] = val * default_glena
-            cfg.PARAMS['inversion_glen_a'] = val * default_glena
-        # set mass balance bias
-        elif key == 'mbbias':
-            mbbias = val
-        elif key == 'prcp_scaling_factor':
-            cfg.PARAMS['prcp_scaling_factor'] = val
-        elif key == 'sliding_factor':
-            cfg.PARAMS['fs'] = val * default_fs
-            cfg.PARAMS['inversion_fs'] = val * default_fs
-        else:
-            raise ValueError('Parameter not understood')
-
-    log.info('Current parameter combination: %s' % str(params))
-
-    # do the mass balance calibration
-    compute_ref_t_stars(ref_gdirs + gdirs)
-    task_list = [tasks.local_t_star,
-                 tasks.mu_star_calibration,
-                 tasks.prepare_for_inversion,
-                 tasks.mass_conservation_inversion,
-                 tasks.filter_inversion_output,
-                 tasks.init_present_time_glacier
-                 ]
-    for task in task_list:
-        execute_entity_task(task, gdirs)
-
-    # check for glaciers to merge:
-    id_pairs = [['RGI60-11.02051', 'RGI60-11.02119', 8],   # tschier, roseg
-                ['RGI60-11.02709', 'RGI60-11.02715', 2.5]]  # mine, ferpec
-    gdirs_merged = []
-    # gdirs2sim = gdirs.copy()
-    for ids in id_pairs:
-        if (ids[0] in gids) and (ids[1] in gids):
-            gd2merge = [gd for gd in gdirs if gd.rgi_id in ids]
-            # gd2merge = [gd for gd in gdirs2sim if gd.rgi_id in ids]
-            # gdirs2sim = [gd for gd in gdirs2sim if gd.rgi_id not in ids]
-            gdir_merged = merge_glacier_tasks(gd2merge, ids[0],
-                                              buffer=ids[2])
-            # uncomment to visually inspect the merged glacier
-            """
-            import matplotlib.pyplot as plt
-            from oggm import graphics
-            f, ax = plt.subplots(1, 1, figsize=(12, 12))
-            graphics.plot_centerlines(gdir_merged,
-                                      use_model_flowlines=True, ax=ax)
-            plt.show()
-            """
-
-            gdirs_merged.append(gdir_merged)
-
-    # gdirs2sim += gdirs_merged
-    gdirs += gdirs_merged
-
-    # do the actual simulations
-    rval = execute_entity_task(simple_spinup_plus_histalp,
-                               # gdirs2sim, meta=meta, obs=obs,
-                               gdirs, meta=meta, obs=obs,
-                               use_systematic_spinup=
-                               use_systematic_spinup,
-                               mb_bias=mbbias
-                               )
-    # remove possible Nones
-    rval = [rl for rl in rval if rl is not None]
-
-    rval_dict[str(params)] = rval
 
     return rval_dict

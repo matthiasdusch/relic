@@ -7,16 +7,19 @@ from oggm.core.climate import compute_ref_t_stars
 from oggm.workflow import execute_entity_task
 from oggm import entity_task
 
-from relic.process_length_observations import (download_leclercq,
-                                               select_my_glaciers)
 
 import logging
 log = logging.getLogger(__name__)
 
+MERGEDICT = {
+             # Tschierva: Roseg
+             'RGI60-11.02051': ['RGI60-11.02119', 'glamos', 'E23/11', 8],
+             # Mine: ferpecle
+             'RGI60-11.02709': ['RGI60-11.02715', 'glamos', 'B72/11', 2.5]
+            }
 
-def configure(workdir, glclist, glena_factor=1.5, baselineclimate='HISTALP',
-              annual_mean_prcp=False, jja_temp=False, prcp_sf=None,
-              y0=None, years=None):
+
+def configure(workdir, glclist, baselineclimate='HISTALP'):
     # Initialize OGGM
     cfg.initialize()
 
@@ -41,17 +44,7 @@ def configure(workdir, glclist, glena_factor=1.5, baselineclimate='HISTALP',
     cfg.PARAMS['filter_for_neg_flux'] = False
     cfg.PARAMS['correct_for_neg_flux'] = True
 
-    # and set standard histalp values
-    cfg.PARAMS['prcp_scaling_factor'] = 1.75
-    cfg.PARAMS['temp_melt'] = -1.75
-
-    gla = cfg.PARAMS['glen_a']
-    # set glan a to nan just do make sure there are no global problems
-    cfg.PARAMS['glen_a'] = gla*glena_factor
-
     gdirs = workflow.init_glacier_regions(glclist, from_prepro_level=3)
-
-    cfg.PARAMS['prcp_gradient'] = 0
 
     # climate
     if baselineclimate == 'CRU':
@@ -60,22 +53,13 @@ def configure(workdir, glclist, glena_factor=1.5, baselineclimate='HISTALP',
 
     if baselineclimate == 'HISTALP':
         cfg.PARAMS['baseline_climate'] = baselineclimate
+        # and set standard histalp values
+        cfg.PARAMS['prcp_scaling_factor'] = 1.75
+        cfg.PARAMS['temp_melt'] = -1.75
         execute_entity_task(tasks.process_histalp_data, gdirs)
 
-    if annual_mean_prcp is True:
-        execute_entity_task(histalp_annual_mean, gdirs, y0=y0, years=years)
-
-    if jja_temp is True:
-        execute_entity_task(annual_temperature_from_summer_temp, gdirs)
-
-    if prcp_sf is not None:
-        cfg.PARAMS['run_mb_calibration'] = True
-        cfg.PARAMS['prcp_scaling_factor'] = prcp_sf
-        compute_ref_t_stars(gdirs)
-
-    execute_entity_task(tasks.local_t_star, gdirs)
-    execute_entity_task(tasks.mu_star_calibration, gdirs)
-    execute_entity_task(tasks.init_present_time_glacier, gdirs)
+    # TODO: if I do use custom climate stuff like histalp_annual_mean:
+    #   ->>>> look back at commits before 1.10.2019
 
     return gdirs
 
@@ -193,9 +177,6 @@ def annual_temperature_from_summer_temp(gdir, y0=1950, years=30):
     gdir.write_pickle(out, 'climate_info')
 
 
-def get_leclercq_observations(firstyear=None):
-    meta_all, data_all = download_leclercq(firstyear=firstyear)
-    meta, data = select_my_glaciers(meta_all, data_all)
-    meta['first'] = meta['first'].astype(int)
-    data.columns = data.columns.astype(int)
-    return meta, data
+
+def merge_pair_dict(mainglc):
+    return MERGEDICT.get(mainglc.strip('_merged'))

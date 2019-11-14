@@ -1,8 +1,7 @@
 import numpy as np
 import pandas as pd
 
-from relic.process_length_observations import add_custom_length
-from relic.preprocessing import get_leclercq_observations
+from relic.length_observations import get_length_observations
 
 
 def calc_acdc(_obs, spinup, model, meta, col):
@@ -128,59 +127,13 @@ def merged_ids(mainid):
     return mids[mainid]
 
 
-def glcnames(glid):
-    namedict = {
-        'RGI60-11.03646': 'Bossons glacier (France)',
-        'RGI60-11.01238': 'Rhone',
-        'RGI60-11.00106': 'Pasterze glacier (Austria)',
-        'RGI60-11.00897': 'Hintereisferner',
-        'RGI60-11.03643': 'Mer de Glace',
-        'RGI60-11.01450': 'Great Aletsch glacier',
-        'RGI60-11.01270': 'Upper Grindelwald glacier',
-        'RGI60-11.02119': 'Roseg',
-        'RGI60-11.02051': 'Tschierva',
-        'RGI60-11.02051_merged': 'Tschierva (with Roseg)',
-        'RGI60-11.02119_merged': 'Roseg and Tschierva glacier (Switzerland)',
-        'RGI60-11.00746': 'Gepatschferner (Austria)',
-        'RGI60-11.03638': 'Argentiere glacier (France)',
-        'RGI60-11.02245': 'Forno',
-        'RGI60-11.01974': 'Forni',
-        'RGI60-11.02916': 'Pre de bard',
-        'RGI60-11.00929': 'Langtaler',
-        'RGI60-11.00887': 'Gurgler',
-        'RGI60-11.02715': 'Ferpecle',
-        'RGI60-11.02709': 'Mont Mine glacier',
-        'RGI60-11.02709_merged': 'Mont Mine (with Ferpecle)',
-        'RGI60-11.02715_merged': 'Ferpecle and Mont Mine glacier (Switzerland)',
-        'RGI60-11.01328': 'Unteraar',
-        'RGI60-11.00992': 'Nierderjoch',
-        'RGI60-11.02630': 'Zinal',
-        'RGI60-11.02793': 'Saleina',
-        'RGI60-11.01478': 'Fiescher',
-        'RGI60-11.01698': 'Langgletscher',
-        'RGI60-11.00872': 'Hüfi',
-        'RGI60-11.02822': 'Gorner',
-        'RGI60-11.02704': 'Allalin',
-        'RGI60-11.02755': 'Tsidjore Nouve',
-        'RGI60-11.02740': 'Trient',
-        'RGI60-11.01946': 'Morteratsch glacier',
-        'RGI60-11.01346': 'Lower Grindelwald glacier (Switzerland)',
-    }
-    return namedict[glid]
-
-
 def runs2df(runs):
     meta, data = get_leclercq_observations()
-    meta, data = add_custom_length(meta, data,
-                                   ['RGI60-11.02051', 'RGI60-11.02709'])
 
     # get all glaciers
     glcs = []
     for run in runs:
         glcs += [gl['rgi_id'] for gl in list(run.values())[0]]
-        #_glcs = [gl['rgi_id'] for gl in list(run.values())[0]]
-        #if len(_glcs) > len(glcs):
-        #    glcs = _glcs.copy()
     glcs = np.unique(glcs).tolist()
 
     # store results per glacier in a dict

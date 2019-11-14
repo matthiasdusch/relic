@@ -10,7 +10,7 @@ import ast
 from relic.postprocessing import (calc_acdc, pareto, merged_ids, glcnames,
                                   mae_all, mae_diff_mean, mae_diff_yearly)
 from relic.preprocessing import get_leclercq_observations
-from relic.process_length_observations import add_custom_length
+from relic.length_observations import add_custom_length
 
 
 def visual_check_spinup(df, meta, tbias, pout, colname=None, cols=None):
@@ -194,8 +194,6 @@ def plt_multiple_runs(runs, pout, y_roll=1, reference=None):
 def plt_correlation(runs, pout, y_len=1, y_corr=10, reference=None):
 
     meta, data = get_leclercq_observations()
-    meta, data = add_custom_length(meta, data,
-                                   ['RGI60-11.02051', 'RGI60-11.02709'])
 
     # get all glaciers
     glcs = [gl['rgi_id'] for gl in list(runs[0].values())[0]]
