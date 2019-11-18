@@ -148,8 +148,6 @@ def spinup_plus_histalp(gdir, meta=None, obs=None, mb_bias=None):
                                             rval['histalp'])
 
     # TODO: EXTRACT and ADD thickness information here
-    # TODO -> add year and location of ice thickness information to meta data of each glacier
-    # TODO if glacier has thickness info, run filemodel to the respective years and extract fl.thick["lon,lat"]
 
     # if merged, store tributary flowline change as well
     if '_merged' in gdir.rgi_id:
@@ -205,7 +203,7 @@ def multi_parameter_run(paramdict, gdirs, meta, obs, runid=None, rgiregion=11):
     # set mass balance bias to None, will be changed if passed as a parameter
     mbbias = None
     # default glena
-    default_glena = cfg.PARAMS['glen_a']
+    default_glena = 2.4e-24
     # default sliding
     default_fs = 5.7e-20
 
