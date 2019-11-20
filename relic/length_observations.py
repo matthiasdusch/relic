@@ -3,13 +3,13 @@ import pandas as pd
 import urllib
 import numpy as np
 
-from relic.preprocessing import GLCDICT, GLCDICT_old
+from relic.preprocessing import GLCDICT
 
 
 def get_wgms(rgiids):
 
-    wgms = pd.read_csv(os.path.join(os.path.dirname(__file__),
-                                    'WGMS-FoG-2018-11-C-FRONT-VARIATION.csv'))
+    wgms_c = pd.read_csv(os.path.join(
+        os.path.dirname(__file__), 'WGMS-FoG-2018-11-C-FRONT-VARIATION.csv'))
 
     dfmeta = pd.DataFrame([], index=rgiids, columns=['name', 'first',
                                                      'measurements', 'dL2003'])
@@ -25,25 +25,28 @@ def get_wgms(rgiids):
         # WGMS ID
         wid = GLCDICT.get(rgi)[1]
 
-        # select glacier from glamos data
-        glc = wgms.loc[wgms['WGMS_ID'] == wid, :]
+        # select glacier from wgms data
+        glc = wgms_c.loc[wgms_c['WGMS_ID'] == wid, :]
+        t0 = np.floor(glc['REFERENCE_DATE']/10000)
+        t0 = t0[t0 >= 1850].iloc[0]
 
-        # TODO make sure end-start in GLAMOS is 1 year!!!
-        # find first year of observation
-        # t0 = pd.DatetimeIndex(glc['start date of observation']).year[0]
+        # secial case
+        if rgi == 'RGI60-11.00897':
+            # Hintereisferner max extent is missing in WGMS
+            # Span et al 1997:
+            t0 = 1855
 
         yr = glc['Year']
-        yr = yr[yr >= 1850]
-        dl = glc['FRONT_VARIATION'][yr.index]
-        dl.iloc[0] = 0
-        dl = dl.cumsum()
+        yr = yr[yr > t0]
+        dl = glc['FRONT_VARIATION'][yr.index].cumsum()
 
         # new dataframe for complete time series
         df = pd.Series(index=np.arange(1850, 2020))
         df.loc[yr] = dl.values
+        df.loc[t0] = 0
 
         # get first measurement
-        dfmeta.loc[rgi, 'first'] = yr.iloc[0]
+        dfmeta.loc[rgi, 'first'] = t0
 
         # write data
         dfdata.loc[rgi] = df
@@ -82,33 +85,41 @@ def get_glamos(rgiids):
         # select glacier from glamos data
         glc = glamos.loc[glamos['glacier id'] == gid, :]
 
-        # TODO make sure end-start in GLAMOS is 1 year!!!
         # find first year of observation
         t0 = pd.DatetimeIndex(glc['start date of observation']).year[0]
         dl = glc['length change'].astype(float).cumsum()
         yr = pd.DatetimeIndex(glc['end date of observation']).year
 
-        # TODO make sure first year !>= 1850
-        # TODO return some meta data
+        if np.any(yr < 1850):
+            raise ValueError
 
         # new dataframe for complete time series
         df = pd.Series(index=np.arange(1850, 2020))
         df.loc[yr] = dl.values
         df.loc[t0] = 0
 
+        # special cases
+        if gid == 'A54l/19':
+            # Unterer Grindelwald
+            # Bauder Email 02.10.2019
+            df.loc[2007] = df.loc[1983] - 230
+            df.loc[2008:] -= 230
+
+        elif rgi == 'RGI60-11.02051':
+            # Tschierva: add Roseg length
+            roseg = glamos. loc[glamos['glacier id'] == 'E23/11', :]
+            df = add_merge_length(df, roseg)
+
+        elif rgi == 'RGI60-11.02709':
+            # Mine: add Ferpecle length
+            ferp = glamos. loc[glamos['glacier id'] == 'B72/11', :]
+            df = add_merge_length(df, ferp)
+
         # get first measurement
-        dfmeta.loc[rgi, 'first'] = t0
+        dfmeta.loc[rgi, 'first'] = df.dropna().index[0]
 
         # write data
         dfdata.loc[rgi] = df
-
-        # special cases
-        # Unterer Grindelwald
-        if gid == 'A54l/19':
-
-            # Bauder Email 02.10.2019
-            dfdata.loc[rgi, 2007] = dfdata.loc[rgi, 1983] - 230
-            dfdata.loc[rgi, 2008:] -= 230
 
         # meta stuff
         dfmeta.loc[rgi, 'name'] = GLCDICT.get(rgi)[2]
@@ -118,11 +129,6 @@ def get_glamos(rgiids):
         dfmeta.loc[rgi, 'dL2003'] = _get_2003_dl(dfdata.loc[rgi],
                                                  dfmeta.loc[rgi, 'name'])
 
-    """
-            # lets linearely interpolate a 2003 value for U. Grindelwald...
-            dfout.loc[nr, 2003] = dfout.loc[nr].interpolate().loc[2003]
-            glc.loc[2003] = dfout.loc[nr].interpolate().loc[2003]
-    """
     return dfmeta, dfdata
 
 
@@ -187,14 +193,14 @@ def get_leclercq(rgiids):
     dfdata = pd.DataFrame([], index=rgiids, columns=y1850)
 
     for rgi in rgiids:
-        if GLCDICT_old.get(rgi)[0] != 'leclercq':
+        if prepro.GLCDICT_old.get(rgi)[0] != 'leclercq':
             # remove from meta and out and continue
             dfdata.drop(rgi)
             dfmeta.drop(rgi)
             continue
 
         # Leclercq ID
-        lid = GLCDICT_old.get(rgi)[1]
+        lid = prepro.GLCDICT_old.get(rgi)[1]
 
         # get first measurement
         dfmeta.loc[rgi, 'first'] = data.loc[lid].dropna().index[0]
@@ -204,7 +210,7 @@ def get_leclercq(rgiids):
         dfdata.loc[rgi] -= dfdata.loc[rgi, dfmeta.loc[rgi, 'first']]
 
         # meta stuff
-        dfmeta.loc[rgi, 'name'] = GLCDICT_old.get(rgi)[2]
+        dfmeta.loc[rgi, 'name'] = prepro.GLCDICT_old.get(rgi)[2]
         dfmeta.loc[rgi, 'measurements'] = len(dfdata.loc[rgi].dropna())
 
         # get 2003 length change
@@ -229,88 +235,62 @@ def _get_2003_dl(glc, name=None):
     return dl2003
 
 
+def add_merge_length(main, merge):
 
-def add_merge_length(meta, data, ids):
+    # find first year of observation
+    t0 = pd.DatetimeIndex(merge['start date of observation']).year[0]
+    dl = merge['length change'].astype(float).cumsum()
+    yr = pd.DatetimeIndex(merge['end date of observation']).year
 
-    glamos = pd.read_csv(os.path.join(os.path.dirname(__file__),
-                                      'lengthchange.csv'),
-                         header=6)
-    raise RuntimeError('todo')
-    for rgi in ids:
+    if np.any(yr < 1850):
+        raise ValueError
 
-        if rgi == 'RGI60-11.02051':
-            name = 'Vadret da Tschierva'
-            merge_id = 'RGI60-11.02119'  # Roseg
-        elif rgi == 'RGI60-11.02709':
-            name = 'Glacier du Mont Miné'
-            merge_id = 'RGI60-11.02715'  # Ferpecle
-        else:
-            raise ValueError('no data implemented')
+    # new dataframe for complete time series
+    df = pd.Series(index=np.arange(1850, 2020))
+    df.loc[yr] = dl.values
+    df.loc[t0] = 0
 
-        # LID of the glacier with the longer observation record
-        merge_lid = meta.loc[meta.RGI_ID == merge_id].index[0]
+    # find first year of short observation
+    t0_short = main.dropna().index[0]
 
-        glc = get_glamos(name)
+    # find closest point in longer time series
+    try:
+        _ = df.dropna().loc[t0_short]
+        t0_long = t0_short
+    except KeyError:
+        minarg = np.abs(df.loc[t0_short-5:t0_short+5].
+                        dropna().index - t0_short).argmin()
+        t0_long = df.loc[t0_short-5:t0_short+5].dropna().index[minarg]
+        print('name t0 = %d (instead of %d)' % (t0_long, t0_short))
 
-        # find first year of short observation
-        t0_short = glc.dropna().index[0]
+    # reference lenght at splitting time
+    dl_ref = df.loc[t0_long]
 
-        # new dataframe for complete time series from the other glacier
-        tmp = data.loc[merge_lid].copy()
+    # reset data from t0_short onwards
+    df.loc[t0_short:] = np.nan
 
-        # find closest point in longer time series
-        try:
-            _ = data.loc[merge_lid].dropna().loc[t0_short]
-            t0_long = t0_short
-        except KeyError:
-            minarg = np.abs(data.loc[merge_lid, t0_short-5:t0_short+5].
-                            dropna().index - t0_short).argmin()
-            t0_long = data.loc[merge_lid, t0_short-5:t0_short+5].\
-                dropna().index[minarg]
-            print('name t0 = %d (instead of %d)' % (t0_long, t0_short))
+    # new length is ref + dl_short
+    df.loc[t0_short] = dl_ref
+    df.loc[main.dropna().index] = dl_ref + main.dropna().values
 
-        # reference lenght at splitting time
-        dl_ref = tmp.loc[t0_long]
+    assert (df.index.unique() == df.index).all()
 
-        # reset data from t0_short onwards
-        tmp.loc[t0_short:] = np.nan
-
-        # new length is ref + dl_short
-        tmp.loc[t0_short] = dl_ref
-        tmp.loc[glc.dropna().index] = dl_ref + glc.dropna().values
-
-        assert (tmp.index.unique() == tmp.index).all()
-
-        # find 2003 length
-        try:
-            dl2003 = tmp.dropna().loc[2003]
-        except KeyError:
-            minarg = np.abs(tmp.loc[2000:2006].dropna().index-2003).argmin()
-            dl2003 = tmp.loc[2000:2006].dropna().iloc[minarg]
-
-        meta.loc[-1*int(rgi.split('.')[-1])] = {'name': name,
-                                                'lon': -99,
-                                                'lat': -99,
-                                                'first': tmp.dropna().index[0],
-                                                'measurements': len(tmp),
-                                                'dL2003': dl2003,
-                                                'RGI_ID': rgi}
-
-        data.loc[-1*int(rgi.split('.')[-1])] = tmp.values
-
-    return meta, data
+    return df
 
 
 def get_length_observations(rgiids):
-    lec_meta, lec_data = get_leclercq(rgiids)
-    gla_meta, gla_data = get_glamos(rgiids)
+    # lec_meta, lec_data = get_leclercq(rgiids)
+    glam_meta, glam_data = get_glamos(rgiids)
+    wgms_meta, wgms_data = get_wgms(rgiids)
 
-    meta, data = select_my_glaciers(meta_all, data_all)
-
-    meta, data = add_merge_length(meta, data,
-                                  ['RGI60-11.02051', 'RGI60-11.02709'])
+    # meta, data = select_my_glaciers(meta_all, data_all)
+    meta = glam_meta.dropna().append(wgms_meta.dropna())
+    data = glam_data.dropna(axis=0, how='all').append(
+        wgms_data.dropna(axis=0, how='all'))
 
     meta['first'] = meta['first'].astype(int)
+    meta['measurements'] = meta['measurements'].astype(int)
+    meta['dL2003'] = meta['dL2003'].astype(int)
     data.columns = data.columns.astype(int)
 
     return meta, data

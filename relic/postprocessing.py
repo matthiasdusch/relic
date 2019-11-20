@@ -29,7 +29,7 @@ def calc_acdc(_obs, spinup, model, meta, col):
 
 def relative_length_change(meta, spinup, histrun):
     spin = (spinup.loc[:] - spinup.loc[0]).dropna().iloc[-1]
-    dl = spin + meta['dL2003'].iloc[0]
+    dl = spin + meta['dL2003']
     # relative length change
     rel_dl = histrun.loc[:] - histrun.iloc[0] + dl
 
@@ -118,17 +118,7 @@ def dummy_dismantel_multirun():
     # combinationdict=ast.literal_eval(rvaldictkey)
 
 
-def merged_ids(mainid):
-    # merged glacier id matches
-    mids = {'RGI60-11.02709_merged': 'RGI60-11.02715',
-            'RGI60-11.02051_merged': 'RGI60-11.02119'
-            }
-
-    return mids[mainid]
-
-
 def runs2df(runs):
-    meta, data = get_leclercq_observations()
 
     # get all glaciers
     glcs = []
@@ -136,30 +126,35 @@ def runs2df(runs):
         glcs += [gl['rgi_id'] for gl in list(run.values())[0]]
     glcs = np.unique(glcs).tolist()
 
+    # take care of merged ones
+    rgi_ids = [gl.split('_')[0] for gl in glcs]
+
+    meta, data = get_length_observations(rgi_ids)
+
     # store results per glacier in a dict
     glcdict = {}
 
-    for glid in glcs:
-        # take care of merged glaciers
-        rgi_id = glid.split('_')[0]
-        _meta = meta.loc[meta['RGI_ID'] == rgi_id].copy()
-        _data = data.loc[_meta.index[0]].copy()
+    for rgi, mrgi in zip(rgi_ids, glcs):
+        _meta = meta.loc[rgi].copy()
+        _data = data.loc[rgi].copy()
 
-        df = pd.DataFrame([], index=np.arange(1850, 2011))
+        df = pd.DataFrame([], index=np.arange(1850, 2020))
         df.loc[_data.index, 'obs'] = _data
 
-        if 'XXX_merged' in glid:
-            mid = merged_ids(glid)
+        """
+        if 'XXX_merged' in mrgi:
+            # mid = merged_ids(mrgi)
 
             _mmeta = meta.loc[meta['RGI_ID'] == mid].copy()
             _mdata = data.loc[_mmeta.index[0]].copy()
             dfmerge = pd.DataFrame([], index=np.arange(1850, 2011))
             dfmerge.loc[_mdata.index, 'obs'] = _mdata
+        """
 
         for nr, run in enumerate(runs):
             rlist = list(run.values())[0]
             try:
-                rdic = [gl for gl in rlist if gl['rgi_id'] == glid][0]
+                rdic = [gl for gl in rlist if gl['rgi_id'] == mrgi][0]
             except IndexError:
                 continue
 
@@ -170,12 +165,16 @@ def runs2df(runs):
 
             df.loc[rdic['rel_dl'].index, rkey] = rdic['rel_dl']
 
+            """
             if 'XXX_merged' in glid:
                 dfmerge.loc[rdic['trib_dl'].index, rkey] = rdic['trib_dl']
+            """
 
-        glcdict[glid] = df
+        glcdict[mrgi] = df
+        """
         if 'XXX_merged' in glid:
             glcdict[mid] = dfmerge
+        """
 
     return glcdict
 
@@ -195,9 +194,13 @@ def pareto(glcdict, maedyr):
         # up = [maes.min(), maediff.min(), corre.min()]
 
         # euclidian dist
-        edisx = np.sqrt(5*(maes-up[0])**2 +
-                        (maediff-up[1])**2).idxmin()
-        #                (corre-up[2])**2).idxmin()
+        # TODO
+        try:
+            edisx = np.sqrt(5*(maes-up[0])**2 +
+                            (maediff-up[1])**2).idxmin()
+            #                (corre-up[2])**2).idxmin()
+        except:
+            continue
 
         if 'XXX_merged' in glc:
             mid = merged_ids(glc)
@@ -215,7 +218,7 @@ def pareto(glcdict, maedyr):
 
         paretodict[glc] = edisx
 
-        plot_pareto(glc, edisx, maes, maediff)
+        # plot_pareto(glc, edisx, maes, maediff)
 
     return paretodict
 

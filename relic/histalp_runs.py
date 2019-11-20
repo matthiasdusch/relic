@@ -12,12 +12,14 @@ from oggm.core.massbalance import (MultipleFlowlineMassBalance,
 from oggm.workflow import (execute_entity_task, init_glacier_regions,
                            merge_glacier_tasks)
 from oggm.core.climate import compute_ref_t_stars
-from oggm import entity_task
+from oggm import entity_task, GlacierDirectory
 from oggm.exceptions import InvalidParamsError
-from oggm.utils import get_ref_mb_glaciers_candidates
 
 from relic.spinup import systematic_spinup
+from relic.preprocessing import merge_pair_dict
 from relic.postprocessing import relative_length_change, mae, r2
+
+from relic import preprocessing
 
 # Module logger
 log = logging.getLogger(__name__)
@@ -87,8 +89,8 @@ def spinup_plus_histalp(gdir, meta=None, obs=None, mb_bias=None):
     rgi_id = gdir.rgi_id.split('_')[0]
 
     # select meta and obs
-    meta = meta.loc[meta['RGI_ID'] == rgi_id].copy()
-    obs = obs.loc[meta.index].iloc[0].copy()
+    meta = meta.loc[rgi_id].copy()
+    # obs = obs.loc[rgi_id].copy()
     # we want to simulate as much as possible -> histalp till 2014
     # obs_ye = obs.dropna().index[-1]
     obs_ye = 2014
@@ -98,7 +100,7 @@ def spinup_plus_histalp(gdir, meta=None, obs=None, mb_bias=None):
 
     if tbias == -999:
 
-        rval = {'rgi_id': gdir.rgi_id, 'name': meta['name'].iloc[0],
+        rval = {'rgi_id': gdir.rgi_id, 'name': meta['name'],
                 'histalp': np.nan,
                 'spinup': np.nan,
                 'tbias': np.nan, 'tmean': np.nan, 'pmean': np.nan}
@@ -111,7 +113,7 @@ def spinup_plus_histalp(gdir, meta=None, obs=None, mb_bias=None):
 
     # --------- HIST IT DOWN ---------------
     try:
-        relic_from_climate_data(gdir, ys=meta['first'].iloc[0], ye=obs_ye,
+        relic_from_climate_data(gdir, ys=meta['first'], ye=obs_ye,
                                 init_model_fls=tmp_mod.fls,
                                 output_filesuffix='_histalp',
                                 mass_balance_bias=mb_bias)
@@ -127,7 +129,7 @@ def spinup_plus_histalp(gdir, meta=None, obs=None, mb_bias=None):
     ds2 = xr.open_dataset(gdir.get_filepath('model_diagnostics',
                                             filesuffix='_spinup'))
     # store mean temperature and precipitation
-    yindex = np.arange(meta['first'].iloc[0], obs_ye+1)
+    yindex = np.arange(meta['first'], obs_ye+1)
 
     try:
         cm = xr.open_dataset(gdir.get_filepath('climate_monthly'))
@@ -138,7 +140,7 @@ def spinup_plus_histalp(gdir, meta=None, obs=None, mb_bias=None):
     tmean = cm.temp.groupby('time.year').mean().loc[yindex].to_pandas()
     pmean = cm.prcp.groupby('time.year').mean().loc[yindex].to_pandas()
 
-    rval = {'rgi_id': gdir.rgi_id, 'name': meta['name'].iloc[0],
+    rval = {'rgi_id': gdir.rgi_id, 'name': meta['name'],
             'histalp': ds1.length_m.to_dataframe()['length_m'],
             'spinup': ds2.length_m.to_dataframe()['length_m'],
             'tbias': tbias, 'tmean': tmean, 'pmean': pmean}
@@ -176,21 +178,6 @@ def spinup_plus_histalp(gdir, meta=None, obs=None, mb_bias=None):
 
 
 def multi_parameter_run(paramdict, gdirs, meta, obs, runid=None, rgiregion=11):
-
-    # we want to run the mb calibration every time
-    cfg.PARAMS['run_mb_calibration'] = True
-    # and we want to use all glaciers for that (from one region)
-    refids = get_ref_mb_glaciers_candidates()
-    if rgiregion is not None:
-        refids = [rid for rid in refids if '-%d.' % rgiregion in rid]
-    # but do leave out the actual glaciers
-    gids = [gd.rgi_id for gd in gdirs]
-    refids = [rid for rid in refids if rid not in gids]
-
-    # initialize the reference glaciers
-    ref_gdirs = init_glacier_regions(rgidf=refids,
-                                     from_prepro_level=3, prepro_border=10)
-
     # get us all parameters
     keys = paramdict.keys()
     values = paramdict.values()
@@ -243,6 +230,11 @@ def multi_parameter_run(paramdict, gdirs, meta, obs, runid=None, rgiregion=11):
         log.info('Current parameter combination: %s' % str(combi))
         log.info('This is combination %d out of %d.' % (nr+1, len(paramcombi)))
 
+        # ok, we need the ref_glaciers here for calibration
+        # they should be initialiced so, just recreate them from the directory
+        ref_gdirs = [GlacierDirectory(refid) for
+                     refid in preprocessing.ADDITIONAL_REFERENCE_GLACIERS]
+
         # do the mass balance calibration
         compute_ref_t_stars(ref_gdirs + gdirs)
         task_list = [tasks.local_t_star,
@@ -256,33 +248,39 @@ def multi_parameter_run(paramdict, gdirs, meta, obs, runid=None, rgiregion=11):
             execute_entity_task(task, gdirs)
 
         # check for glaciers to merge:
-        id_pairs = [['RGI60-11.02119', 'RGI60-11.02051', 8],   # ferpecle, mine
-                    ['RGI60-11.02715', 'RGI60-11.02709', 2.5]]  # roseg,tschier
         gdirs_merged = []
-        for ids in id_pairs:
-            if (ids[0] in gids) and (ids[1] in gids):
-                gd2merge = [gd for gd in gdirs if gd.rgi_id in ids]
-                gdir_merged = merge_glacier_tasks(gd2merge, ids[0],
-                                                  buffer=ids[2])
-                """
+        gdirs2sim = gdirs.copy()
+        for gid in meta.index:
+            merg = merge_pair_dict(gid)
+            if merg is not None:
+                # main and tributary glacier
+                gd2merge = [gd for gd in gdirs if gd.rgi_id in [gid] + merg[0]]
+
+                # actual merge task
+                gdir_merged = merge_glacier_tasks(gd2merge, gid,
+                                                  buffer=merg[1])
+
+                # remove the entity glaciers from the simulation list
+                gdirs2sim = [gd for gd in gdirs2sim if
+                             gd.rgi_id not in [gid] + merg[0]]
+
                 # uncomment to visually inspect the merged glacier
                 import matplotlib.pyplot as plt
                 from oggm import graphics
+                import os
                 f, ax = plt.subplots(1, 1, figsize=(12, 12))
                 graphics.plot_centerlines(gdir_merged,
                                           use_model_flowlines=True, ax=ax)
-                plt.show()
-                """
+                f.savefig(os.path.join(cfg.PATHS['working_dir'], gid) + '.png')
+
                 gdirs_merged.append(gdir_merged)
 
-        # TODO maybe really do not run unmerged glaciers -> remove gd2merge ones
-        # but nor from gdirs, rather make extra list gdirs2run
-
-        gdirs += gdirs_merged
+        # add merged glaciers to the left over entity glaciers
+        gdirs2sim += gdirs_merged
 
         # do the actual simulations
         rval = execute_entity_task(spinup_plus_histalp,
-                                   gdirs, meta=meta, obs=obs,
+                                   gdirs2sim, meta=meta, obs=obs,
                                    mb_bias=mbbias
                                    )
         # remove possible Nones

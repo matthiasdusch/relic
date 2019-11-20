@@ -103,7 +103,7 @@ def systematic_spinup(gdir, meta, glena=None):
     #   this then needs to be considered in meta as well
     len2003 = fls[-1].length_m
     # how long shall we go? MINUS for positive length change!
-    dl = -meta['dL2003'].iloc[0]
+    dl = -meta['dL2003']
 
     # first tbias guess: Relative length change compared to todays length
     fg = np.abs(dl/len2003)
