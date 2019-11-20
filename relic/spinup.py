@@ -92,77 +92,6 @@ def minimize_dl(tbias, mb, fls, dl, len2003, glena, gdir, optimization):
                                    diag_path=diag_path)
 
 
-def spinup_with_tbias(gdir, fls, dl, len2003, glena=None):
-    """
-
-    Parameters
-    ----------
-    gdir
-    fls
-    dl
-    len2003
-    glena
-
-    Returns
-    -------
-
-    """
-
-    # first tbias guess: Relative length change compared to todays length
-    fg = np.abs(dl/len2003)
-    # limit to reasonable first guesses
-    fg = np.clip(fg, 0, 2)
-    # force minus
-    fg *= -1
-
-    print('first guess: %.2f' % fg)
-
-    # mass balance model
-    mb = MultipleFlowlineMassBalance(gdir, fls=fls,
-                                     mb_model_class=ConstantMassBalance)
-
-    optilist = []
-    optisuccess = False
-
-    for nr in np.arange(1, 4):
-
-        if nr == 1:
-            br1 = fg
-            br2 = fg-1
-        else:
-            optilist.append(opti)
-            br1 = opti.x - 0.5
-            br2 = opti.x - 1
-
-        opti = scipy.optimize.minimize_scalar(minimize_dl,
-                                              bracket=(br1, br2),
-                                              tol=1e-2,
-                                              args=(mb, fls, dl, len2003, glena,
-                                                    gdir, True),
-                                              options={'maxiter': 30}
-                                              )
-
-        log.info('%d. opti: %s\n%s' % (nr, gdir.rgi_id, opti))
-
-        if np.sqrt(opti.fun) <= fls[-1].dx_meter:
-            optisuccess = True
-            break
-
-    if optisuccess is False:
-        for ol in optilist:
-            if ol.fun < opti.fun:
-                opti = ol
-        log.info('%s optim did not work, continue with smallest error\n%s'
-                 % (gdir.rgi_id, opti))
-
-    tbias = opti.x
-
-    # --------- SPIN IT UP FOR REAL ---------------
-    minimize_dl(tbias, mb, fls, dl, len2003, glena, gdir, False)
-
-    return tbias
-
-
 def systematic_spinup(gdir, meta, glena=None):
     import numpy.polynomial.polynomial as poly
 
@@ -170,9 +99,11 @@ def systematic_spinup(gdir, meta, glena=None):
 
     # how long are we at initialization
     fls = gdir.read_pickle('model_flowlines')
+    # TODO maybe not use 2003 as fixed date, but rather ask for the RGI date
+    #   this then needs to be considered in meta as well
     len2003 = fls[-1].length_m
     # how long shall we go? MINUS for positive length change!
-    dl = -meta['dL2003'].iloc[0]
+    dl = -meta['dL2003']
 
     # first tbias guess: Relative length change compared to todays length
     fg = np.abs(dl/len2003)

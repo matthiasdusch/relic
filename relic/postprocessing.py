@@ -1,8 +1,7 @@
 import numpy as np
 import pandas as pd
 
-from relic.process_length_observations import add_custom_length
-from relic.preprocessing import get_leclercq_observations
+from relic.length_observations import get_length_observations
 
 
 def calc_acdc(_obs, spinup, model, meta, col):
@@ -30,7 +29,7 @@ def calc_acdc(_obs, spinup, model, meta, col):
 
 def relative_length_change(meta, spinup, histrun):
     spin = (spinup.loc[:] - spinup.loc[0]).dropna().iloc[-1]
-    dl = spin + meta['dL2003'].iloc[0]
+    dl = spin + meta['dL2003']
     # relative length change
     rel_dl = histrun.loc[:] - histrun.iloc[0] + dl
 
@@ -119,94 +118,43 @@ def dummy_dismantel_multirun():
     # combinationdict=ast.literal_eval(rvaldictkey)
 
 
-def merged_ids(mainid):
-    # merged glacier id matches
-    mids = {'RGI60-11.02709_merged': 'RGI60-11.02715',
-            'RGI60-11.02051_merged': 'RGI60-11.02119'
-            }
-
-    return mids[mainid]
-
-
-def glcnames(glid):
-    namedict = {
-        'RGI60-11.03646': 'Bossons glacier (France)',
-        'RGI60-11.01238': 'Rhone',
-        'RGI60-11.00106': 'Pasterze glacier (Austria)',
-        'RGI60-11.00897': 'Hintereisferner',
-        'RGI60-11.03643': 'Mer de Glace',
-        'RGI60-11.01450': 'Great Aletsch glacier',
-        'RGI60-11.01270': 'Upper Grindelwald glacier',
-        'RGI60-11.02119': 'Roseg',
-        'RGI60-11.02051': 'Tschierva',
-        'RGI60-11.02051_merged': 'Tschierva (with Roseg)',
-        'RGI60-11.02119_merged': 'Roseg and Tschierva glacier (Switzerland)',
-        'RGI60-11.00746': 'Gepatschferner (Austria)',
-        'RGI60-11.03638': 'Argentiere glacier (France)',
-        'RGI60-11.02245': 'Forno',
-        'RGI60-11.01974': 'Forni',
-        'RGI60-11.02916': 'Pre de bard',
-        'RGI60-11.00929': 'Langtaler',
-        'RGI60-11.00887': 'Gurgler',
-        'RGI60-11.02715': 'Ferpecle',
-        'RGI60-11.02709': 'Mont Mine glacier',
-        'RGI60-11.02709_merged': 'Mont Mine (with Ferpecle)',
-        'RGI60-11.02715_merged': 'Ferpecle and Mont Mine glacier (Switzerland)',
-        'RGI60-11.01328': 'Unteraar',
-        'RGI60-11.00992': 'Nierderjoch',
-        'RGI60-11.02630': 'Zinal',
-        'RGI60-11.02793': 'Saleina',
-        'RGI60-11.01478': 'Fiescher',
-        'RGI60-11.01698': 'Langgletscher',
-        'RGI60-11.00872': 'Hüfi',
-        'RGI60-11.02822': 'Gorner',
-        'RGI60-11.02704': 'Allalin',
-        'RGI60-11.02755': 'Tsidjore Nouve',
-        'RGI60-11.02740': 'Trient',
-        'RGI60-11.01946': 'Morteratsch glacier',
-        'RGI60-11.01346': 'Lower Grindelwald glacier (Switzerland)',
-    }
-    return namedict[glid]
-
-
 def runs2df(runs):
-    meta, data = get_leclercq_observations()
-    meta, data = add_custom_length(meta, data,
-                                   ['RGI60-11.02051', 'RGI60-11.02709'])
 
     # get all glaciers
     glcs = []
     for run in runs:
         glcs += [gl['rgi_id'] for gl in list(run.values())[0]]
-        #_glcs = [gl['rgi_id'] for gl in list(run.values())[0]]
-        #if len(_glcs) > len(glcs):
-        #    glcs = _glcs.copy()
     glcs = np.unique(glcs).tolist()
+
+    # take care of merged ones
+    rgi_ids = [gl.split('_')[0] for gl in glcs]
+
+    meta, data = get_length_observations(rgi_ids)
 
     # store results per glacier in a dict
     glcdict = {}
 
-    for glid in glcs:
-        # take care of merged glaciers
-        rgi_id = glid.split('_')[0]
-        _meta = meta.loc[meta['RGI_ID'] == rgi_id].copy()
-        _data = data.loc[_meta.index[0]].copy()
+    for rgi, mrgi in zip(rgi_ids, glcs):
+        _meta = meta.loc[rgi].copy()
+        _data = data.loc[rgi].copy()
 
-        df = pd.DataFrame([], index=np.arange(1850, 2011))
+        df = pd.DataFrame([], index=np.arange(1850, 2020))
         df.loc[_data.index, 'obs'] = _data
 
-        if 'XXX_merged' in glid:
-            mid = merged_ids(glid)
+        """
+        if 'XXX_merged' in mrgi:
+            # mid = merged_ids(mrgi)
 
             _mmeta = meta.loc[meta['RGI_ID'] == mid].copy()
             _mdata = data.loc[_mmeta.index[0]].copy()
             dfmerge = pd.DataFrame([], index=np.arange(1850, 2011))
             dfmerge.loc[_mdata.index, 'obs'] = _mdata
+        """
 
         for nr, run in enumerate(runs):
             rlist = list(run.values())[0]
             try:
-                rdic = [gl for gl in rlist if gl['rgi_id'] == glid][0]
+                rdic = [gl for gl in rlist if gl['rgi_id'] == mrgi][0]
             except IndexError:
                 continue
 
@@ -217,12 +165,16 @@ def runs2df(runs):
 
             df.loc[rdic['rel_dl'].index, rkey] = rdic['rel_dl']
 
+            """
             if 'XXX_merged' in glid:
                 dfmerge.loc[rdic['trib_dl'].index, rkey] = rdic['trib_dl']
+            """
 
-        glcdict[glid] = df
+        glcdict[mrgi] = df
+        """
         if 'XXX_merged' in glid:
             glcdict[mid] = dfmerge
+        """
 
     return glcdict
 
@@ -242,9 +194,13 @@ def pareto(glcdict, maedyr):
         # up = [maes.min(), maediff.min(), corre.min()]
 
         # euclidian dist
-        edisx = np.sqrt(5*(maes-up[0])**2 +
-                        (maediff-up[1])**2).idxmin()
-        #                (corre-up[2])**2).idxmin()
+        # TODO
+        try:
+            edisx = np.sqrt(5*(maes-up[0])**2 +
+                            (maediff-up[1])**2).idxmin()
+            #                (corre-up[2])**2).idxmin()
+        except:
+            continue
 
         if 'XXX_merged' in glc:
             mid = merged_ids(glc)
@@ -262,7 +218,7 @@ def pareto(glcdict, maedyr):
 
         paretodict[glc] = edisx
 
-        plot_pareto(glc, edisx, maes, maediff)
+        # plot_pareto(glc, edisx, maes, maediff)
 
     return paretodict
 

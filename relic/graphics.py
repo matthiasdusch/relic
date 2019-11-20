@@ -7,10 +7,9 @@ import numpy as np
 import os
 import ast
 
-from relic.postprocessing import (calc_acdc, pareto, merged_ids, glcnames,
+from relic.postprocessing import (calc_acdc, pareto,
                                   mae_all, mae_diff_mean, mae_diff_yearly)
-from relic.preprocessing import get_leclercq_observations
-from relic.process_length_observations import add_custom_length
+from relic.preprocessing import GLCDICT
 
 
 def visual_check_spinup(df, meta, tbias, pout, colname=None, cols=None):
@@ -194,8 +193,6 @@ def plt_multiple_runs(runs, pout, y_roll=1, reference=None):
 def plt_correlation(runs, pout, y_len=1, y_corr=10, reference=None):
 
     meta, data = get_leclercq_observations()
-    meta, data = add_custom_length(meta, data,
-                                   ['RGI60-11.02051', 'RGI60-11.02709'])
 
     # get all glaciers
     glcs = [gl['rgi_id'] for gl in list(runs[0].values())[0]]
@@ -387,6 +384,11 @@ def poster_plot(glcdict, pout, y_len=1):
     # xkcdplot(glcdict, paretodict)
 
     for glid, df in glcdict.items():
+        # TODO
+        try:
+            paretodict[glid]
+        except:
+            continue
 
         # take care of merged glaciers
         rgi_id = glid.split('_')[0]
@@ -403,10 +405,13 @@ def poster_plot(glcdict, pout, y_len=1):
         # plot observations
         df.loc[:, 'obs'].rolling(1, min_periods=1).mean(). \
             plot(ax=ax1, color='k', marker='o', label='Observed length change')
+        # TODO
+        """
         if glid == 'RGI60-11.01346':
             df.loc[1984:2003, 'obs'].rolling(1, min_periods=1).mean(). \
                 plot(ax=ax1, color='0.4', marker='o',
                      label='Linear interpolation to 2013 length')
+        """
 
         # objective 1
         maes = mae_all(df, normalised=True).idxmin()
@@ -448,7 +453,7 @@ def poster_plot(glcdict, pout, y_len=1):
             mean().plot(ax=ax1, linewidth=4, color='C2',
                         label='Best simulated length change:')
 
-        name = glcnames(glid)
+        name = GLCDICT.get(rgi_id)[2]
 
         # add merged tributary
         if 'XXX_merged' in glid:
@@ -479,7 +484,7 @@ def poster_plot(glcdict, pout, y_len=1):
         ax1.set_title('%s' % name, fontsize=30)
         ax1.set_ylabel('relative length change [m]', fontsize=26)
         ax1.set_xlabel('Year', fontsize=26)
-        ax1.set_xlim([1850, 2010])
+        ax1.set_xlim([1850, 2020])
         ax1.set_ylim([-3500, 500])
         ax1.tick_params(axis='both', which='major', labelsize=22)
         ax1.grid(True)
