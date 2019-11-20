@@ -141,7 +141,7 @@ GLCDICT_old = {
 ADDITIONAL_REFERENCE_GLACIERS = []
 
 
-def configure(workdir, glclist, baselineclimate='HISTALP'):
+def configure(workdir, glclist, baselineclimate='HISTALP', resetwd=False):
     global MERGEDICT
     global GLCDICT
     global ADDITIONAL_REFERENCE_GLACIERS
@@ -151,7 +151,7 @@ def configure(workdir, glclist, baselineclimate='HISTALP'):
     cfg.PATHS['working_dir'] = workdir
 
     # Local working directory (where OGGM will write its output)
-    utils.mkdir(workdir, reset=True)
+    utils.mkdir(workdir, reset=resetwd)
 
     # Use multiprocessing?
     cfg.PARAMS['use_multiprocessing'] = True
