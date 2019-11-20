@@ -148,10 +148,10 @@ def configure(workdir, glclist, baselineclimate='HISTALP'):
 
     # Initialize OGGM
     cfg.initialize()
+    cfg.PATHS['working_dir'] = workdir
 
     # Local working directory (where OGGM will write its output)
     utils.mkdir(workdir, reset=True)
-    cfg.PATHS['working_dir'] = workdir
 
     # Use multiprocessing?
     cfg.PARAMS['use_multiprocessing'] = True
