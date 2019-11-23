@@ -8,7 +8,8 @@ import os
 import ast
 
 from relic.postprocessing import (calc_acdc, pareto,
-                                  mae_all, mae_diff_mean, mae_diff_yearly)
+                                  mae_all, mae_diff_mean, mae_diff_yearly,
+                                  mae_weighted)
 from relic.preprocessing import GLCDICT
 
 
@@ -414,7 +415,8 @@ def poster_plot(glcdict, pout, y_len=1):
         """
 
         # objective 1
-        maes = mae_all(df, normalised=True).idxmin()
+        # maes = mae_all(df, normalised=True).idxmin()
+        maes = mae_weighted(df, normalised=True).idxmin()
         df.loc[:, maes].rolling(y_len, center=True). \
             mean().plot(ax=ax1, linewidth=2, color='C0',
                         label='Best result for Objective 1')

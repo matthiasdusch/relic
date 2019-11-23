@@ -7,17 +7,15 @@ import itertools
 from oggm import tasks, cfg
 from oggm.core.flowline import FileModel, robust_model_run
 from oggm.core.massbalance import (MultipleFlowlineMassBalance,
-                                   ConstantMassBalance,
                                    PastMassBalance)
-from oggm.workflow import (execute_entity_task, init_glacier_regions,
-                           merge_glacier_tasks)
+from oggm.workflow import execute_entity_task, merge_glacier_tasks
 from oggm.core.climate import compute_ref_t_stars
 from oggm import entity_task, GlacierDirectory
 from oggm.exceptions import InvalidParamsError
 
 from relic.spinup import systematic_spinup
 from relic.preprocessing import merge_pair_dict
-from relic.postprocessing import relative_length_change, mae, r2
+from relic.postprocessing import relative_length_change
 
 from relic import preprocessing
 
@@ -177,7 +175,7 @@ def spinup_plus_histalp(gdir, meta=None, obs=None, mb_bias=None):
     return rval
 
 
-def multi_parameter_run(paramdict, gdirs, meta, obs, runid=None, rgiregion=11):
+def multi_parameter_run(paramdict, gdirs, meta, obs, runid=None):
     # get us all parameters
     keys = paramdict.keys()
     values = paramdict.values()
@@ -264,6 +262,7 @@ def multi_parameter_run(paramdict, gdirs, meta, obs, runid=None, rgiregion=11):
                 gdirs2sim = [gd for gd in gdirs2sim if
                              gd.rgi_id not in [gid] + merg[0]]
 
+                """
                 # uncomment to visually inspect the merged glacier
                 import matplotlib.pyplot as plt
                 from oggm import graphics
@@ -272,6 +271,7 @@ def multi_parameter_run(paramdict, gdirs, meta, obs, runid=None, rgiregion=11):
                 graphics.plot_centerlines(gdir_merged,
                                           use_model_flowlines=True, ax=ax)
                 f.savefig(os.path.join(cfg.PATHS['working_dir'], gid) + '.png')
+                """
 
                 gdirs_merged.append(gdir_merged)
 
