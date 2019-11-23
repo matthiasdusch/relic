@@ -41,9 +41,40 @@ def mae(obs, model):
 
 
 def mae_all(df, normalised=False):
-
+    raise RuntimeError
     maeall = df.loc[:, df.columns != 'obs'].sub(df.loc[:, 'obs'], axis=0).\
         dropna().abs().mean()
+
+    if normalised:
+        # return maeall/maeall.max()
+        return (maeall - maeall.min())/(maeall.max()-maeall.min())
+    else:
+        return maeall
+
+
+def mae_weighted(df, normalised=False):
+
+    # calculate MAE, without mean first
+    maeall = df.loc[:, df.columns != 'obs'].sub(df.loc[:, 'obs'], axis=0). \
+        dropna().abs()
+
+    # index of observations
+    oix = maeall.index
+
+    # observation gaps
+    doix = np.diff(oix)
+
+    # weight as size of gap in both directions
+    wgh = np.zeros_like(oix, dtype=float)
+    wgh[0:-1] = doix/2
+    wgh[1:] = doix/2
+    # and a minimum weight of 1
+    wgh = np.maximum(wgh, 1)
+
+    # now apply weight
+    maeall = maeall.mul(wgh, axis=0)
+    # and take mean
+    maeall = maeall.mean()
 
     if normalised:
         # return maeall/maeall.max()
@@ -185,22 +216,23 @@ def pareto(glcdict, maedyr):
     for glc in glcdict.keys():
 
         # get my measures
-        maes = mae_all(glcdict[glc], normalised=True)
+        # maes = mae_all(glcdict[glc], normalised=True)
         maediff = mae_diff_yearly(glcdict[glc], maedyr, normalised=True)
         # corre = diff_corr(glcdict[glc], yr=maedyr, normalised=True)
+        maes = mae_weighted(glcdict[glc], normalised=True)
+        # print(mae_wght)
 
         # utopian
         up = [maes.min(), maediff.min()]
         # up = [maes.min(), maediff.min(), corre.min()]
 
         # euclidian dist
-        # TODO
-        try:
-            edisx = np.sqrt(5*(maes-up[0])**2 +
-                            (maediff-up[1])**2).idxmin()
-            #                (corre-up[2])**2).idxmin()
-        except:
-            continue
+        # TODO pareto weight
+        pwgh = 5
+        pwgh = 1
+        edisx = np.sqrt(pwgh*(maes-up[0])**2 +
+                        (maediff-up[1])**2).idxmin()
+        #                (corre-up[2])**2).idxmin()
 
         if 'XXX_merged' in glc:
             mid = merged_ids(glc)
