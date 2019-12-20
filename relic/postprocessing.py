@@ -1,7 +1,12 @@
 import numpy as np
 import pandas as pd
+import ast
+import os
+
+import pickle
 
 from relic.length_observations import get_length_observations
+from relic.preprocessing import GLCDICT
 
 
 def calc_acdc(_obs, spinup, model, meta, col):
@@ -40,8 +45,18 @@ def mae(obs, model):
     return np.mean(np.abs(obs-model).dropna())
 
 
+def max_error(df, amax=200, detrend=False, normalised=False):
+    maxe = df.loc[:, df.columns != 'obs'].sub(df.loc[:, 'obs'], axis=0).\
+        dropna().abs().max().sort_values()
+
+    # maxedf = df.loc[:, maxe.loc[maxe < amax].index]
+    maxeidx = maxe.loc[maxe < amax].index
+    if len(maxeidx) < 2:
+        maxeidx = maxe.index[:50]
+    return maxeidx
+
+
 def mae_all(df, normalised=False):
-    raise RuntimeError
     maeall = df.loc[:, df.columns != 'obs'].sub(df.loc[:, 'obs'], axis=0).\
         dropna().abs().mean()
 
@@ -50,6 +65,70 @@ def mae_all(df, normalised=False):
         return (maeall - maeall.min())/(maeall.max()-maeall.min())
     else:
         return maeall
+
+
+def std_quotient(df, normalised=False):
+    # make sure only to calculate where both obs and run are available
+    # take any index
+    runidx = df.loc[:, df.columns[df.columns != 'obs'][0]].dropna().index
+    obsidx = df.loc[:, 'obs'].dropna().index
+    idx = np.intersect1d(runidx, obsidx)
+
+    stdall = df.loc[idx].std()
+
+    stdquot = (stdall.loc[stdall.index != 'obs'] / stdall.loc['obs'])
+
+    if normalised:
+        # bring it relative to 1
+        stqn = np.abs(1-stdquot)
+        return (stqn - stqn.min())/(stqn.max()-stqn.min())
+    else:
+        return stdquot
+
+
+def r2(df, normalised=True):
+    df['obs'] = df['obs'].astype(float)
+    corr2obs = df.corr()['obs']
+
+    corr = corr2obs[corr2obs.index != 'obs']
+
+    if normalised:
+        corn = 1 - corr
+        assert np.all(corn > 0)
+        assert np.all(corn < 2)
+        return (corn - corn.min())/(corn.max()-corn.min())
+    else:
+        return corr
+
+
+def mean_error_weighted(df, normalised=False):
+
+    # calculate ME, without mean first
+    me = df.loc[:, df.columns != 'obs'].sub(df.loc[:, 'obs'], axis=0).dropna()
+
+    # index of observations
+    oix = me.index
+
+    # observation gaps
+    doix = np.diff(oix)
+
+    # weight as size of gap in both directions
+    wgh = np.zeros_like(oix, dtype=float)
+    wgh[0:-1] = doix/2
+    wgh[1:] = doix/2
+    # and a minimum weight of 1
+    wgh = np.maximum(wgh, 1)
+
+    # now apply weight
+    meall = me.mul(wgh, axis=0)
+    # and take mean
+    meall = meall.mean()
+
+    if normalised:
+        # return maeall/maeall.max()
+        return (meall - meall.min())/(meall.max()-meall.min())
+    else:
+        return meall
 
 
 def mae_weighted(df, normalised=False):
@@ -137,11 +216,6 @@ def diff_corr(df, yr=10, normalised=False):
         return corre
 
 
-def r2(obs, model):
-    ix = obs.dropna().index
-    return np.corrcoef(obs.dropna(), model[ix])[0, 1]
-
-
 def dummy_dismantel_multirun():
     # just to remember
     import ast
@@ -149,7 +223,7 @@ def dummy_dismantel_multirun():
     # combinationdict=ast.literal_eval(rvaldictkey)
 
 
-def runs2df(runs):
+def runs2df(runs, glenamin=0):
 
     # get all glaciers
     glcs = []
@@ -157,7 +231,19 @@ def runs2df(runs):
         glcs += [gl['rgi_id'] for gl in list(run.values())[0]]
     glcs = np.unique(glcs).tolist()
 
-    # take care of merged ones
+    # subset
+    glcs = ['RGI60-11.00746',
+            'RGI60-11.00897_merged',
+            'RGI60-11.01270',
+            'RGI60-11.01450_merged',
+            'RGI60-11.01946',
+            'RGI60-11.02051_merged',
+            'RGI60-11.02740',
+            'RGI60-11.03638',
+            'RGI60-11.03643_merged',
+            'RGI60-11.03646']
+
+# take care of merged ones
     rgi_ids = [gl.split('_')[0] for gl in glcs]
 
     meta, data = get_length_observations(rgi_ids)
@@ -193,6 +279,28 @@ def runs2df(runs):
                 continue
 
             rkey = list(run.keys())[0]
+            para = ast.literal_eval('{' + rkey + '}')
+
+            if para['glena_factor'] < glenamin:
+                continue
+
+#            if para['glena_factor'] > 3:
+#                continue
+
+            """
+            if para['mbbias'] < -800:
+                continue
+            if para['mbbias'] > 800:
+                continue
+
+            if para['prcp_scaling_factor'] < 1:
+                continue
+            if para['prcp_scaling_factor'] > 3:
+                continue
+            """
+
+            #if not np.isclose(para['prcp_scaling_factor'], 1.75, atol=0.01):
+            #    continue
 
             df.loc[rdic['rel_dl'].index, rkey] = rdic['rel_dl']
 
@@ -210,47 +318,234 @@ def runs2df(runs):
     return glcdict
 
 
-def pareto(glcdict, maedyr):
+def rearfit(df, normalised=False):
+    # this is basically the MAE of the last x years:
+    # get the modelruns last indices
+    moix = df.loc[:, df.columns != 'obs'].dropna().index[-10:]
+
+    mae10 = mae_weighted(df.loc[moix], normalised=normalised)
+
+    return mae10
+
+
+def mean_error_pm(glcdict, n=15):
+    medict = {}
+
+    for glc, df in glcdict.items():
+        # get the smallest MAEs
+        mes = mean_error_weighted(glcdict[glc], normalised=False)
+
+        meplus = mes[mes >= 0].sort_values()[:n]
+        meminus = mes[mes < 0].sort_values(ascending=False)[:n]
+
+        medict[glc] = meplus.append(meminus).index
+
+    return medict
+
+
+def pareto3(glcdict):
+    paretodict = {}
+
+    for glc, df in glcdict.items():
+
+
+        """
+        # get them in a normaliesed way
+        maes = mae_weighted(glcdict[glc].loc[:,
+                            np.append(df.index, 'obs')],
+                            # np.append(_maes.index.values, 'obs')],
+                            normalised=True).sort_values()
+        stdq = std_quotient(glcdict[glc].loc[:,
+                            np.append(df.index, 'obs')],
+                            normalised=True).sort_values()
+        """
+
+
+        """
+        # get the smallest MAEs
+        _maes = mae_weighted(glcdict[glc], normalised=False).sort_values().iloc[:1300]
+        
+        maes = mae_weighted(df.loc[:, np.append(_maes.index, 'obs')],
+                            normalised=True)
+
+        stdq = std_quotient(df.loc[:, np.append(_maes.index, 'obs')],
+                            normalised=True)
+
+        rf = rearfit(df.loc[:, np.append(_maes.index, 'obs')],
+                     normalised=True)
+
+        cor = r2(df.loc[:, np.append(_maes.index, 'obs')],
+                 normalised=True)
+        """
+
+        maes = mae_weighted(df, normalised=True)
+
+        stdq = std_quotient(df, normalised=True)
+
+        rf = rearfit(df, normalised=True)
+
+        cor = r2(df, normalised=True)
+
+
+        # same for the stdq
+        # stdq = std_quotient(glcdict[glc].loc[:,
+        #                    np.append(_maes.index.values, 'obs')],
+        #                    normalised=True)
+
+        # utopian, is 0/0/0 anyway...
+        up = [maes.min(), stdq.min(), cor.min(), rf.min()]
+
+        # euclidian dist
+        edisx = np.sqrt(5*((maes - up[0]) ** 2) +
+                        (stdq - up[1]) ** 2 +
+                        (cor - up[2]) ** 2 +
+                        (rf - up[3]) ** 2).sort_values()
+
+        # paretodict[glc] = edisx.index
+        paretodict[glc] = edisx.loc[edisx < edisx.quantile(0.05)].index
+
+    return paretodict
+
+
+def paretoX(glcdict, x=20):
+    paretodict = {}
+
+    for glc in glcdict.keys():
+
+        # get the smallest MAEs
+        _maes = mae_weighted(glcdict[glc], normalised=False).sort_values()
+
+        dfstat = pd.DataFrame([], columns=['prcp', 'glena', 'mbbias',
+                                           'mae', 'stdq'])
+
+        for run in _maes.index:
+            para = ast.literal_eval('{' + run + '}')
+
+            dfstat.loc[run, 'prcp'] = para['prcp_scaling_factor']
+            dfstat.loc[run, 'glena'] = para['glena_factor']
+            dfstat.loc[run, 'mbbias'] = para['mbbias']
+            dfstat.loc[run, 'mae'] = _maes.loc[run]
+
+
+        dfstat = dfstat.astype(float)
+        #mb0 = dfstat.groupby('mbbias').median()['mae'].sort_values().index[0]
+        #dfstat = dfstat.loc[(dfstat['mbbias'] == mb0)] # |
+                            #(dfstat['mbbias'] == mb0 + 200) |
+                            #(dfstat['mbbias'] == mb0 - 200)]
+
+        mbmin = dfstat.groupby('mbbias').median()['mae'].min()
+        dfstat = dfstat.loc[dfstat['mae'] < mbmin]
+
+        # get them in a normaliesed way
+        maes = mae_weighted(glcdict[glc].loc[:,
+                            np.append(dfstat.index, 'obs')],
+                            # np.append(_maes.index.values, 'obs')],
+                            normalised=True).sort_values()
+
+        stdq = std_quotient(glcdict[glc].loc[:,
+                            np.append(dfstat.index, 'obs')],
+                            normalised=True).sort_values()
+
+
+        # same for the stdq
+        #stdq = std_quotient(glcdict[glc].loc[:,
+        #                    np.append(_maes.index.values, 'obs')],
+        #                    normalised=True)
+
+        # utopian
+        up = [maes.min(), stdq.min()]
+
+        # euclidian dist
+        edisx = np.sqrt((maes-up[0])**2 + (stdq-up[1])**2).sort_values()
+
+        paretodict[glc] = edisx.index
+
+        #plot_pareto(glc, edisx.index[:x], maes, stdq)
+
+    return paretodict
+
+
+
+def pareto(glcdict, pout):
     paretodict = {}
 
     for glc in glcdict.keys():
 
         # get my measures
         # maes = mae_all(glcdict[glc], normalised=True)
-        maediff = mae_diff_yearly(glcdict[glc], maedyr, normalised=True)
+        # maediff = mae_diff_yearly(glcdict[glc], maedyr, normalised=True)
         # corre = diff_corr(glcdict[glc], yr=maedyr, normalised=True)
-        maes = mae_weighted(glcdict[glc], normalised=True)
-        # print(mae_wght)
+
+        # stdq = std_quotient(glcdict[glc], normalised=True)
+        # maes = mae_weighted(glcdict[glc], normalised=True)
+
+        # get the 15 smallest MAEs
+        _maes = mae_weighted(glcdict[glc], normalised=False).sort_values().iloc[:130]
+        # get them in a normaliesed way
+        maes = mae_weighted(glcdict[glc].loc[:,
+                            np.append(_maes.index.values, 'obs')],
+                            normalised=True)
+        # same for the stdq
+        stdq = std_quotient(glcdict[glc].loc[:,
+                            np.append(_maes.index.values, 'obs')],
+                            normalised=True)
 
         # utopian
-        up = [maes.min(), maediff.min()]
+        up = [maes.min(), stdq.min()]
         # up = [maes.min(), maediff.min(), corre.min()]
 
         # euclidian dist
         # TODO pareto weight
-        pwgh = 5
         pwgh = 1
+        # pwgh = 1
         edisx = np.sqrt(pwgh*(maes-up[0])**2 +
-                        (maediff-up[1])**2).idxmin()
+                        (stdq-up[1])**2).idxmin()
         #                (corre-up[2])**2).idxmin()
-
-        if 'XXX_merged' in glc:
-            mid = merged_ids(glc)
-            # get my measures
-            maes2 = mae_all(glcdict[mid], normalised=True)
-            maediff2 = mae_diff_yearly(glcdict[mid], maedyr, normalised=True)
-            # corre2 = diff_corr(glcdict[mid], yr=maedyr, normalised=True)
-            up += [maes2.min(), maediff2.min()]
-            # up += [maes2.min(), maediff2.min(), corre2.min()]
-
-            edisx = np.sqrt((maes-up[0])**2 +
-                            (maediff-up[1])**2 +
-                            (maes2-up[2])**2 +
-                            (maediff2-up[3])**2).idxmin()
 
         paretodict[glc] = edisx
 
-        # plot_pareto(glc, edisx, maes, maediff)
+        # plot_pareto(glc, edisx, maes, stdq)
+
+    if pout is not None:
+        paretopth = os.path.join(pout, 'pareto.p')
+        pickle.dump(paretodict, open(paretopth, 'wb'))
+
+    return paretodict
+
+
+def pareto2(stats, glcdict):
+
+    paretodict = {}
+
+    for glc, df in glcdict.items():
+        dfs = stats[glc].astype(float)
+
+        mb0 = dfs.groupby('mbbias').median()['mae'].sort_values().index[0]
+        dfs = dfs.loc[(dfs['mbbias'] == mb0) |
+                      (dfs['mbbias'] == mb0 + 200) |
+                      (dfs['mbbias'] == mb0 - 200)]
+
+        # get the 15 smallest MAEs
+        #_maes = mae_weighted(df.loc[:, np.append(dfs.index, 'obs')],
+        #                     normalised=False).sort_values().iloc[:78]
+
+        # get them in a normaliesed way
+        maes = mae_weighted(df.loc[:, np.append(dfs.index, 'obs')],
+                            normalised=True)
+
+        # same for the stdq
+        stdq = std_quotient(df.loc[:, np.append(dfs.index, 'obs')],
+                            normalised=True)
+
+        # utopian
+        up = [maes.min(), stdq.min()]
+
+        edisx = np.sqrt((maes-up[0])**2 +
+                        (stdq-up[1])**2).idxmin()
+
+        paretodict[glc] = edisx
+
+        plot_pareto(glc, edisx, maes, stdq)
 
     return paretodict
 
@@ -259,12 +554,23 @@ def plot_pareto(glc, edisx, maes, maediff):
     import matplotlib.pyplot as plt
     import ast
     import os
-    from colorspace import diverging_hcl
+    from colorspace import diverging_hcl, sequential_hcl
     from matplotlib.colors import ListedColormap
 
     fig1, ax1 = plt.subplots(figsize=[15, 8])
+    rgi_id = glc.split('_')[0]
+    name = GLCDICT.get(rgi_id)[2]
 
     ax1.plot(0, 0, '*k', markersize=20, label='utopian solution')
+
+    if isinstance(edisx, list):
+        print(name)
+        for run in edisx:
+            ax1.plot(maes.loc[run], maediff.loc[run], '*r', color='C2',
+                     markersize=10, markeredgecolor='C3',
+                     label='')
+            print(run)
+        edisx = edisx[0]
 
     ax1.plot(maes.loc[edisx], maediff.loc[edisx], '*r', color='C2',
              markersize=25, markeredgecolor='C3',
@@ -291,13 +597,22 @@ def plot_pareto(glc, edisx, maes, maediff):
     cmap[:, -1] = np.append(np.linspace(1, 0.5, 4)**2, np.linspace(0.5, 1, 4)**2)
     mbbcmp = ListedColormap(cmap)
 
+    # glena
+    cmap = sequential_hcl('Blue-Yellow').cmap(8)(np.arange(8))
+    glacmp = ListedColormap(cmap)
+
+    # prcp2
+    cmap = sequential_hcl('Heat').cmap(16)(np.arange(16))
+    prcpcmp2 = ListedColormap(cmap)
+
     for run in maes.index:
         prm = ast.literal_eval('{' + run + '}')
 
         df = df.append({'mae': maes.loc[run],
                         'maedif': maediff.loc[run],
                         'mb': prm['mbbias'],
-                        'prcp': prm['prcp_scaling_factor']},
+                        'prcp': prm['prcp_scaling_factor'],
+                        'glena': prm['glena_factor']},
                        ignore_index=True)
 
         """
@@ -310,9 +625,11 @@ def plot_pareto(glc, edisx, maes, maediff):
                  alpha=pcdica[prm['prcp_scaling_factor']])
         """
 
-    sc2 = ax1.scatter(df.mae, df.maedif, c=df.mb, cmap=mbbcmp, label='')
-    sc1 = ax1.scatter(df.mae, df.maedif, c=df.prcp, cmap=prcpcmp.reversed(),
-                      label='')
+    #sc2 = ax1.scatter(df.mae, df.maedif, c=df.mb, cmap=mbbcmp, label='')
+    sc2 = ax1.scatter(df.mae, df.maedif, c=df.glena, cmap=glacmp.reversed(), label='',
+                      s=100)
+    sc1 = ax1.scatter(df.mae, df.maedif, c=df.prcp, cmap=prcpcmp2.reversed(),
+                      label='', s=25)
 
     cx1 = fig1.add_axes([0.71, 0.38, 0.05, 0.55])
     cb1 = plt.colorbar(sc1, cax=cx1)
@@ -320,13 +637,12 @@ def plot_pareto(glc, edisx, maes, maediff):
 
     cx2 = fig1.add_axes([0.85, 0.38, 0.05, 0.55])
     cb2 = plt.colorbar(sc2, cax=cx2)
-    cb2.set_label('Mass balance bias', fontsize=16)
+    cb2.set_label('Glen A Factor', fontsize=16)
 
-    name = glcnames(glc)
     ax1.set_title(name, fontsize=30)
     ax1.tick_params(axis='both', which='major', labelsize=22)
 
-    ax1.set_ylabel('5yr difference MAE (normalised)',
+    ax1.set_ylabel('STD quotient (normalised)',
                    fontsize=26)
     ax1.set_xlabel('MAE of relative length change (normalised)', fontsize=26)
 
@@ -335,7 +651,7 @@ def plot_pareto(glc, edisx, maes, maediff):
 
     ax1.grid(True)
     fig1.tight_layout()
-    pout = '/home/matthias/length_change_1850/multi/array/190926/pareto'
+    pout = '/home/matthias/length_change_1850/neu/'
     fn1 = os.path.join(pout, 'pareto_%s.png' % glc)
     # fn2 = os.path.join(pout, 'pareto_%s.pdf' % name.split()[0])
     fig1.savefig(fn1)

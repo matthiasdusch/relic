@@ -6,10 +6,12 @@ import pandas as pd
 import numpy as np
 import os
 import ast
+import pickle
 
-from relic.postprocessing import (calc_acdc, pareto,
+from relic.postprocessing import (calc_acdc, pareto, std_quotient,
                                   mae_all, mae_diff_mean, mae_diff_yearly,
-                                  mae_weighted)
+                                  mae_weighted, r2, pareto2, paretoX,
+                                  max_error, pareto3, rearfit, mean_error_pm)
 from relic.preprocessing import GLCDICT
 
 
@@ -520,6 +522,362 @@ def poster_plot(glcdict, pout, y_len=1):
         # fn1b = os.path.join(pout, 'histalp_%s.pdf' % name.split()[0])
         fig1.savefig(fn1)
         # fig1.savefig(fn1b)
+
+
+def plot_best50(glcdict, pout, y_len=1):
+
+    #paretodict = pareto(glcdict, None)
+    #pdicmb = paretoX(glcdict, 130)
+
+    # pdic3 = pareto3(glcdict)
+    pdic3 = mean_error_pm(glcdict, n=15)
+
+    for glid, df in glcdict.items():
+
+        # take care of merged glaciers
+        rgi_id = glid.split('_')[0]
+
+        fig1, ax1 = plt.subplots(figsize=[17, 7])
+
+        # get MAEs
+        maes = mae_weighted(df, normalised=True).sort_values().iloc[:130]
+        # get stdquot
+        stdquot = std_quotient(df, normalised=True).sort_values().iloc[:130]
+
+        stdmae = std_quotient(df.loc[:, np.append(maes.index.values, 'obs')],
+                              normalised=True).sort_values().iloc[:13]
+
+        """
+        # mae ensemble
+        ens_tbias = np.array([])
+        ens_precp = np.array([])
+        ens_glena = np.array([])
+        for run in maes.index:
+            prm = ast.literal_eval('{' + run + '}')
+            ens_precp = np.append(ens_precp, prm['prcp_scaling_factor'])
+            ens_tbias = np.append(ens_tbias, prm['mbbias'])
+            ens_glena = np.append(ens_glena, prm['glena_factor'])
+        mgla = np.median(ens_glena)
+        mprc = np.median(ens_precp)
+        mtbi = np.median(ens_tbias)
+        gla = ens_glena[np.abs(ens_glena - mgla).argmin()]
+        tbi = ens_tbias[np.abs(ens_tbias - mtbi).argmin()]
+        prc = ens_precp[np.abs(ens_precp - mprc).argmin()]
+
+        # loop over all runs as the combination might not be with the top ones
+        for run in df.columns[1:]:
+            ensemble = None
+            para = ast.literal_eval('{' + run + '}')
+            if ((np.abs(para['prcp_scaling_factor']-prc) < 0.01) and
+                    (para['mbbias'] == tbi) and
+                    (para['glena_factor'] == gla)):
+                ensemble = run
+                break
+
+
+        # use
+        try:
+            statspth = os.path.join(pout, 'statistics.p')
+            stats = pickle.load(open(statspth, 'rb'))
+
+
+            dfs = stats[glid].astype(float)
+            mb0 = dfs.groupby('mbbias').median()['mae'].sort_values().index[0]
+            dfs = dfs.loc[(dfs['mbbias'] == mb0) |
+                          (dfs['mbbias'] == mb0 + 200) |
+                          (dfs['mbbias'] == mb0 - 200)]
+            stdq = std_quotient(df.loc[:, np.append(dfs.index, 'obs')],
+                                normalised=True).sort_values().iloc[:30]
+            corr = r2(df.loc[:, np.append(dfs.index, 'obs')]).sort_values(ascending=False).iloc[:30]
+        except:
+            pass
+
+        nolbl = df.loc[:, df.columns != 'obs'].rolling(y_len, center=True).mean().copy()
+        nolbl.columns = ['' for i in range(len(nolbl.columns))]
+        nolbl.plot(ax=ax1, linewidth=0.5, color='0.8')
+        """
+        # best x runs as grey lines
+        nolbl = df.loc[:, pdic3[glid]].rolling(y_len, center=True).mean().copy()
+        nolbl.columns = ['' for i in range(len(nolbl.columns))]
+        nolbl.plot(ax=ax1, linewidth=0.5, color='0.8')
+
+        """
+        # best x runs as grey lines
+        nolbl = df.loc[:, stdmae.index].rolling(y_len, center=True).mean().copy()
+        nolbl.columns = ['' for i in range(len(nolbl.columns))]
+        nolbl.plot(ax=ax1, linewidth=0.5, color='c')
+        """
+
+        # plot observations
+        df.loc[:, 'obs'].rolling(1, min_periods=1).mean(). \
+            plot(ax=ax1, color='k', marker='o',
+                 label='Observed length change (std = %.2f)' % df.loc[:, 'obs'].std())
+
+        # objective 1
+        df.loc[:, maes.index[0]].rolling(y_len, center=True). \
+            mean().plot(ax=ax1, linewidth=2, color='C0',
+                        label='min MAE weighted (ob1)')
+
+        """
+        df.loc[:, stdquot.index[0]].rolling(y_len, center=True). \
+            mean().plot(ax=ax1, linewidth=2, color='C1',
+                        label='min stdquot')
+        """
+
+        df.loc[:, stdmae.index[0]].rolling(y_len, center=True). \
+            mean().plot(ax=ax1, linewidth=2, color='C3',
+                        label='min mae (30) min stdquot (ob2)')
+
+        df.loc[:, pdic3[glid][0]].rolling(y_len, center=True). \
+            mean().plot(ax=ax1, linewidth=2, color='C2',
+                        label='PARETO otim')
+
+        df.loc[:, pdic3[glid]].median(axis=1).plot(ax=ax1, linewidth=2, color='C1', label='ens median %d' % len(pdic3[glid]))
+        df.loc[:, pdic3[glid]].mean(axis=1).plot(ax=ax1, linewidth=4, color='C1', label='ens mean %d' % len(pdic3[glid]))
+
+        # OGGM standard
+        for run in df.columns:
+            if run == 'obs':
+                continue
+            para = ast.literal_eval('{' + run + '}')
+            if ((np.abs(para['prcp_scaling_factor']-1.75) < 0.01) and
+                    (para['mbbias'] == 0) and
+                    (para['glena_factor'] == 1)):
+                df.loc[:, run].rolling(y_len, center=True). \
+                    mean().plot(ax=ax1, linewidth=1, color='k',
+                                label='OGGM HISTALP standard parameters')
+
+        # best run
+        # get parameters
+        p1 = ast.literal_eval('{' + maes.index[0] + '}')
+        p2 = ast.literal_eval('{' + stdquot.index[0] + '}')
+        p3 = ast.literal_eval('{' + stdmae.index[0] + '}')
+        p4 = ast.literal_eval('{' + pdic3[glid][0] + '}')
+
+        name = GLCDICT.get(rgi_id)[2]
+
+        ax1.set_title('%s' % name, fontsize=30)
+        ax1.set_ylabel('relative length change [m]', fontsize=26)
+        ax1.set_xlabel('Year', fontsize=26)
+        ax1.set_xlim([1850, 2020])
+        ax1.set_ylim([-3500, 1000])
+        ax1.tick_params(axis='both', which='major', labelsize=22)
+        ax1.grid(True)
+
+        l1 = ('%.2f, %.2f, %.2f, %.2f precipitation scaling factor' %
+              (p1['prcp_scaling_factor'], p2['prcp_scaling_factor'],
+               p3['prcp_scaling_factor'], p4['prcp_scaling_factor']))
+        l2 = ('%.1f, %.1f, %.1f, %.1f Glen A factor' %
+              (p1['glena_factor'], p2['glena_factor'], p3['glena_factor'],
+               p4['glena_factor']))
+        l3 = ('%.1f, %.1f, %.1f, %.1f [m w.e. a' r'$^{-1}$' '] mass balance bias' %
+              (p1['mbbias']/1000, p2['mbbias']/1000, p3['mbbias']/1000,
+               p4['mbbias'] / 1000))
+
+        plt.plot(0, 0, color='w', alpha=0, label=l1)
+        plt.plot(0, 0, color='w', alpha=0, label=l2)
+        plt.plot(0, 0, color='w', alpha=0, label=l3)
+
+        hix = 4
+
+        hdl, lbl = ax1.get_legend_handles_labels()
+        hdl2 = np.concatenate(([hdl[-hix]], hdl[-hix+1:],
+                               hdl[0:-hix]), axis=0)
+        lbl2 = np.concatenate(([lbl[-hix]], lbl[-hix+1:],
+                               lbl[0:-hix]), axis=0)
+        ax1.legend(hdl2, lbl2,
+                   fontsize=16, loc=3, ncol=2)
+
+        fig1.tight_layout()
+        fn1 = os.path.join(pout, 'histalp_%s.png' % glid)
+        fig1.savefig(fn1)
+
+
+def best50_params(glcdict, pout):
+
+    for glid, df in glcdict.items():
+
+        # take care of merged glaciers
+        rgi_id = glid.split('_')[0]
+
+        fig1, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=[17, 7])
+
+        # get MAEs
+        maes = mae_weighted(df, normalised=True).sort_values().iloc[:78]
+
+        # get stdquotient
+        stdquot = std_quotient(df, normalised=True).sort_values().iloc[:78]
+
+        for (rn1, mae), (rn2, sq) in zip(maes.iteritems(),
+                                         stdquot.iteritems()):
+            para1 = ast.literal_eval('{' + rn1 + '}')
+            para2 = ast.literal_eval('{' + rn2 + '}')
+
+            # mae
+            ax1.plot(mae, para1['prcp_scaling_factor'], 'ob')
+            ax2.plot(mae, para1['glena_factor'], 'ob')
+            ax3.plot(mae, para1['mbbias'], 'ob')
+            # std
+            ax1.plot(sq, para2['prcp_scaling_factor'], '.r')
+            ax2.plot(sq, para2['glena_factor'], '.r')
+            ax3.plot(sq, para2['mbbias'], '.r')
+
+        name = GLCDICT.get(rgi_id)[2]
+
+        fig1.suptitle('%s' % name, fontsize=30)
+        ax1.set_ylabel('precp_scaling_factor', fontsize=26)
+        ax2.set_ylabel('glena_factor', fontsize=26)
+        ax3.set_ylabel('mbbias', fontsize=26)
+        ax1.set_xlabel('MAE / STDquotient', fontsize=26)
+        ax2.set_xlabel('MAE / STDquotient', fontsize=26)
+        ax3.set_xlabel('MAE / STDquotient', fontsize=26)
+
+        # ax1.set_xlim([1850, 2020])
+        # ax1.set_ylim([-3500, 500])
+        ax1.tick_params(axis='both', which='major', labelsize=22)
+        ax2.tick_params(axis='both', which='major', labelsize=22)
+        ax3.tick_params(axis='both', which='major', labelsize=22)
+        ax1.grid(True)
+        ax2.grid(True)
+        ax3.grid(True)
+
+        fig1.tight_layout()
+        fn1 = os.path.join(pout, 'params_%s.png' % glid)
+        fig1.savefig(fn1)
+
+
+
+
+
+def plot_allglaciers(glcdict, pout):
+
+    paretopth = os.path.join(pout, 'pareto.p')
+    try:
+        paretodict = pickle.load(open(paretopth, 'rb'))
+    except:
+        paretodict = pareto(glcdict, pout)
+
+    dfmod = pd.DataFrame([], index=np.arange(1850, 2020))
+    dfobs = pd.DataFrame([], index=np.arange(1850, 2020))
+
+    for glid, df in glcdict.items():
+
+        dfmod.loc[:, glid] = df.loc[:, paretodict[glid]].astype(float)
+        dfobs.loc[:, glid] = df['obs'].astype(float)
+
+    fig1, ax1 = plt.subplots(figsize=[17, 9])
+
+
+    qt1obs = dfobs.dropna(how='all').quantile(q=0.25, axis=1).rolling(3, center=True).mean()
+    qt2obs = dfobs.dropna(how='all').quantile(q=0.75, axis=1).rolling(3, center=True).mean()
+    ax1.plot(qt1obs.index, qt1obs.values, linewidth=1, color='0.5')
+    ax1.plot(qt2obs.index, qt2obs.values, linewidth=1, color='0.5')
+    ax1.fill_between(qt1obs.index, qt1obs.values, qt2obs.values, color='0.5')
+
+
+    qt1mod1 = dfmod.dropna(how='all').quantile(q=0.25, axis=1).rolling(3, center=True).mean()
+    qt2mod1 = dfmod.dropna(how='all').quantile(q=0.75, axis=1).rolling(3, center=True).mean()
+    ax1.plot(qt1mod1.index, qt1mod1.values, linewidth=2, color='C0')
+    ax1.plot(qt2mod1.index, qt2mod1.values, linewidth=2, color='C0')
+
+    medobs = dfobs.dropna(how='all').median(axis=1).rolling(3, center=True).mean()
+    ax1.plot(medobs.index, medobs.values, linewidth=6, color='k',
+             label='median all observations')
+
+    medmod = dfmod.dropna(how='all').median(axis=1).rolling(3, center=True).mean()
+    ax1.plot(medmod.index, medmod.values, linewidth=6, color='C0',
+             label='median all best model runs')
+
+    ax1.set_title('30 glaciers', fontsize=30)
+    ax1.set_ylabel('relative length change [m]', fontsize=26)
+    ax1.set_xlabel('Year', fontsize=26)
+    ax1.set_xlim([1850, 2020])
+    ax1.set_ylim([-3000, 500])
+    ax1.tick_params(axis='both', which='major', labelsize=22)
+    ax1.grid(True)
+
+    ax1.legend(fontsize=20, loc=3)
+
+    fig1.tight_layout()
+    fn1 = os.path.join(pout, 'allglcs.pdf')
+    fig1.savefig(fn1)
+
+
+def boxplot_params(glcdict, pout):
+
+    outdict = {}
+
+    for glid, df in glcdict.items():
+
+        # take care of merged glaciers
+        rgi_id = glid.split('_')[0]
+
+        fig1, axy = plt.subplots(3, 3, figsize=[20, 20])
+        axs = axy.reshape(-1)
+
+        # get MAEs
+        maes = mae_weighted(df, normalised=False).sort_values()# .iloc[:100]
+
+        # get stdquotient
+        stdquot = std_quotient(df.loc[:, np.append(maes.index.values, 'obs')],
+                               normalised=False).sort_values()
+
+        corr = r2(df.loc[:, np.append(maes.index.values, 'obs')])
+
+        dfstat = pd.DataFrame([], columns=['prcp', 'glena', 'mbbias',
+                                           'mae', 'stdq', 'r2'])
+
+        for run in maes.index:
+            para = ast.literal_eval('{' + run + '}')
+
+            dfstat.loc[run, 'prcp'] = para['prcp_scaling_factor']
+            dfstat.loc[run, 'glena'] = para['glena_factor']
+            dfstat.loc[run, 'mbbias'] = para['mbbias']
+            dfstat.loc[run, 'mae'] = maes.loc[run]
+            dfstat.loc[run, 'stdq'] = stdquot.loc[run]
+            dfstat.loc[run, 'r2'] = corr.loc[run]
+
+        # prcp
+        dfstat.boxplot(column='mae', by='prcp', ax=axs[0], grid=False,
+                       widths=0.2, showfliers=False)
+        dfstat.boxplot(column='stdq', by='prcp', ax=axs[3], grid=False,
+                       widths=0.2, showfliers=False)
+        dfstat.boxplot(column='r2', by='prcp', ax=axs[6], grid=False,
+                       widths=0.2, showfliers=False)
+
+        # glena
+        dfstat.boxplot(column='mae', by='glena', ax=axs[1], grid=False,
+                       widths=0.2, showfliers=False)
+        dfstat.boxplot(column='stdq', by='glena', ax=axs[4], grid=False,
+                       widths=0.2, showfliers=False)
+        dfstat.boxplot(column='r2', by='glena', ax=axs[7], grid=False,
+                       widths=0.2, showfliers=False)
+
+        # mbbias
+        dfstat.boxplot(column='mae', by='mbbias', ax=axs[2], grid=False,
+                       widths=0.2, showfliers=False)
+        dfstat.boxplot(column='stdq', by='mbbias', ax=axs[5], grid=False,
+                       widths=0.2, showfliers=False)
+        dfstat.boxplot(column='r2', by='mbbias', ax=axs[8], grid=False,
+                       widths=0.2, showfliers=False)
+
+        name = GLCDICT.get(rgi_id)[2]
+
+        fig1.suptitle('%s' % name, fontsize=25)
+        axs[0].set_ylabel('MAE', fontsize=22)
+        axs[3].set_ylabel('STDq', fontsize=22)
+        #axs[0].set_xlabel('prcp factor', fontsize=26)
+        # axs[0].tick_params(axis='both', which='major', labelsize=22)
+        # axs[3].grid(True)
+
+        fig1.tight_layout()
+        fn1 = os.path.join(pout, 'box_%s.png' % glid)
+        fig1.savefig(fn1)
+
+        outdict[glid] = dfstat
+
+    outdictpath = os.path.join(pout, 'statistics.p')
+    pickle.dump(outdict, open(outdictpath, 'wb'))
 
 
 def xkcdplot(glcs, paretodict):

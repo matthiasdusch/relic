@@ -49,7 +49,7 @@ GLCDICT = {
     'RGI60-11.01346': ['glamos', 'A54l/19',
                        'Unterer Grindelwald Gletscher', 'Switzerland'],
     'RGI60-11.01450': ['glamos', 'B36/26',
-                       'Groser Aletsch Gletscher (with Mittelaletsch Gl.)',
+                       'Großer Aletsch Gletscher (with Mittelaletsch Gl.)',
                        'Switzerland'],
     'RGI60-11.01478': ['glamos', 'B40/07', 'Fieschergletscher', 'Switzerland'],
     'RGI60-11.01698': ['glamos', 'B31/04', 'Langgletscher', 'Switzerland'],
