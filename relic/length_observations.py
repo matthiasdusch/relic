@@ -6,14 +6,14 @@ import numpy as np
 from relic.preprocessing import GLCDICT
 
 
-def get_wgms(rgiids):
+def get_wgms(rgiids, firstyear=1850):
 
     wgms_c = pd.read_csv(os.path.join(
         os.path.dirname(__file__), 'WGMS-FoG-2018-11-C-FRONT-VARIATION.csv'))
 
     dfmeta = pd.DataFrame([], index=rgiids, columns=['name', 'first',
                                                      'measurements', 'dL2003'])
-    dfdata = pd.DataFrame([], index=rgiids, columns=np.arange(1850, 2020))
+    dfdata = pd.DataFrame([], index=rgiids, columns=np.arange(firstyear, 2020))
 
     for rgi in rgiids:
         if GLCDICT.get(rgi)[0] != 'wgms':
@@ -28,10 +28,10 @@ def get_wgms(rgiids):
         # select glacier from wgms data
         glc = wgms_c.loc[wgms_c['WGMS_ID'] == wid, :]
         t0 = np.floor(glc['REFERENCE_DATE']/10000)
-        t0 = t0[t0 >= 1850].iloc[0]
+        t0 = t0[t0 >= firstyear].iloc[0]
 
         # secial case
-        if rgi == 'RGI60-11.00897':
+        if (rgi == 'RGI60-11.00897') and (firstyear <= 1855):
             # Hintereisferner max extent is missing in WGMS
             # Span et al 1997:
             t0 = 1855
@@ -41,7 +41,7 @@ def get_wgms(rgiids):
         dl = glc['FRONT_VARIATION'][yr.index].cumsum()
 
         # new dataframe for complete time series
-        df = pd.Series(index=np.arange(1850, 2020))
+        df = pd.Series(index=np.arange(firstyear, 2020))
         df.loc[yr] = dl.values
         df.loc[t0] = 0
 
@@ -62,7 +62,7 @@ def get_wgms(rgiids):
     return dfmeta, dfdata
 
 
-def get_glamos(rgiids):
+def get_glamos(rgiids, firstyear=1850):
 
     glamos = pd.read_csv(os.path.join(os.path.dirname(__file__),
                                       'lengthchange.csv'),
@@ -70,7 +70,7 @@ def get_glamos(rgiids):
 
     dfmeta = pd.DataFrame([], index=rgiids, columns=['name', 'first',
                                                      'measurements', 'dL2003'])
-    dfdata = pd.DataFrame([], index=rgiids, columns=np.arange(1850, 2020))
+    dfdata = pd.DataFrame([], index=rgiids, columns=np.arange(firstyear, 2020))
 
     for rgi in rgiids:
         if GLCDICT.get(rgi)[0] != 'glamos':
@@ -90,29 +90,29 @@ def get_glamos(rgiids):
         dl = glc['length change'].astype(float).cumsum()
         yr = pd.DatetimeIndex(glc['end date of observation']).year
 
-        if np.any(yr < 1850):
+        if np.any(yr < firstyear):
             raise ValueError
 
         # new dataframe for complete time series
-        df = pd.Series(index=np.arange(1850, 2020))
+        df = pd.Series(index=np.arange(firstyear, 2020))
         df.loc[yr] = dl.values
         df.loc[t0] = 0
 
         # special cases
         if gid == 'A54l/19':
             # Unterer Grindelwald
-            # Bauder Email 02.10.2019
+            # Andreas Bauder Email 02.10.2019
             df.loc[2007] = df.loc[1983] - 230
             df.loc[2008:] -= 230
 
         elif rgi == 'RGI60-11.02051':
             # Tschierva: add Roseg length
-            roseg = glamos. loc[glamos['glacier id'] == 'E23/11', :]
+            roseg = glamos.loc[glamos['glacier id'] == 'E23/11', :]
             df = add_merge_length(df, roseg)
 
         elif rgi == 'RGI60-11.02709':
             # Mine: add Ferpecle length
-            ferp = glamos. loc[glamos['glacier id'] == 'B72/11', :]
+            ferp = glamos.loc[glamos['glacier id'] == 'B72/11', :]
             df = add_merge_length(df, ferp)
 
         # get first measurement
@@ -278,10 +278,11 @@ def add_merge_length(main, merge):
     return df
 
 
-def get_length_observations(rgiids):
+def get_length_observations(rgiids, firstyear=1850):
+
     # lec_meta, lec_data = get_leclercq(rgiids)
-    glam_meta, glam_data = get_glamos(rgiids)
-    wgms_meta, wgms_data = get_wgms(rgiids)
+    glam_meta, glam_data = get_glamos(rgiids, firstyear=firstyear)
+    wgms_meta, wgms_data = get_wgms(rgiids, firstyear=firstyear)
 
     # meta, data = select_my_glaciers(meta_all, data_all)
     meta = glam_meta.dropna().append(wgms_meta.dropna())

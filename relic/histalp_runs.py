@@ -262,7 +262,6 @@ def multi_parameter_run(paramdict, gdirs, meta, obs, runid=None):
                 gdirs2sim = [gd for gd in gdirs2sim if
                              gd.rgi_id not in [gid] + merg[0]]
 
-                """
                 # uncomment to visually inspect the merged glacier
                 import matplotlib.pyplot as plt
                 from oggm import graphics
@@ -271,7 +270,6 @@ def multi_parameter_run(paramdict, gdirs, meta, obs, runid=None):
                 graphics.plot_centerlines(gdir_merged,
                                           use_model_flowlines=True, ax=ax)
                 f.savefig(os.path.join(cfg.PATHS['working_dir'], gid) + '.png')
-                """
 
                 gdirs_merged.append(gdir_merged)
 

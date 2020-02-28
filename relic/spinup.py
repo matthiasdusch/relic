@@ -39,7 +39,6 @@ def minimize_dl(tbias, mb, fls, dl, len2003, glena, gdir, optimization):
     mb.temp_bias = tbias
 
     model = FluxBasedModel(fls, mb_model=mb,
-                           time_stepping='default',
                            glen_a=glena)
 
     try:
@@ -59,8 +58,14 @@ def minimize_dl(tbias, mb, fls, dl, len2003, glena, gdir, optimization):
             log.info('(%s) tbias of %.2f exceeds domain boundaries' %
                      (gdir.rgi_id, tbias))
             return len2003**2
+        elif 'CFL error' in err.args[0]:
+            log.info('(%s) tbias of %.2f leads to CFL error' %
+                     (gdir.rgi_id, tbias))
+            print(err)
+            return len2003**2
         else:
-            raise RuntimeError('This should never happen...')
+            print(err)
+            raise RuntimeError('This should never happen 2...')
 
     if optimization is True:
         if model.length_m < fls[-1].dx_meter:
@@ -86,10 +91,40 @@ def minimize_dl(tbias, mb, fls, dl, len2003, glena, gdir, optimization):
                                       filesuffix=filesuffix,
                                       delete=True)
         model2 = FluxBasedModel(fls, mb_model=mb,
-                                time_stepping='default',
                                 glen_a=glena)
         model2.run_until_and_store(model.yr, run_path=run_path,
                                    diag_path=diag_path)
+
+
+def final_spinup(tbias, mb, fls, dl, len2003, delta, gdir, filesuffix='_spinup'):
+    """ dont overspin it!!
+    """
+    # Mass balance
+    mb.temp_bias = tbias
+
+    model = FluxBasedModel(fls, mb_model=mb)
+
+    yrs = 50
+    dl_spinup = model.length_m - len2003
+
+    while delta < (dl - dl_spinup):
+        model.run_until(yrs)
+        dl_spinup = model.length_m - len2003
+        yrs += 5
+
+    run_path = gdir.get_filepath('model_run',
+                                 filesuffix=filesuffix,
+                                 delete=True)
+    diag_path = gdir.get_filepath('model_diagnostics',
+                                  filesuffix=filesuffix,
+                                  delete=True)
+
+    # TODO: thats a bodge and a unnecessary simulation...
+    model2 = FluxBasedModel(fls, mb_model=mb)
+    run_ds, diag_ds = model2.run_until_and_store(yrs, run_path=run_path,
+                                                 diag_path=diag_path)
+
+    return run_ds, diag_ds
 
 
 def systematic_spinup(gdir, meta, glena=None):
@@ -238,5 +273,6 @@ def systematic_spinup(gdir, meta, glena=None):
                  gdir.rgi_id)
 
     # --------- SPIN IT UP FOR REAL ---------------
-    minimize_dl(tbias, mb, fls, dl, len2003, glena, gdir, False)
+    final_spinup(tbias, mb, fls, dl, len2003, delta, gdir)
+    # minimize_dl(tbias, mb, fls, dl, len2003, glena, gdir, False)
     return tbias

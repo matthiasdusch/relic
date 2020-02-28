@@ -804,8 +804,10 @@ def plot_allglaciers(glcdict, pout):
 
 
 def boxplot_params(glcdict, pout):
+    from relic.postprocessing import pareto4
 
     outdict = {}
+    pdic4 = pareto4(glcdict)
 
     for glid, df in glcdict.items():
 
@@ -825,7 +827,7 @@ def boxplot_params(glcdict, pout):
         corr = r2(df.loc[:, np.append(maes.index.values, 'obs')])
 
         dfstat = pd.DataFrame([], columns=['prcp', 'glena', 'mbbias',
-                                           'mae', 'stdq', 'r2'])
+                                           'mae', 'stdq', 'pareto'])
 
         for run in maes.index:
             para = ast.literal_eval('{' + run + '}')
@@ -835,14 +837,14 @@ def boxplot_params(glcdict, pout):
             dfstat.loc[run, 'mbbias'] = para['mbbias']
             dfstat.loc[run, 'mae'] = maes.loc[run]
             dfstat.loc[run, 'stdq'] = stdquot.loc[run]
-            dfstat.loc[run, 'r2'] = corr.loc[run]
+            dfstat.loc[run, 'pareto'] = pdic4[glid][run]
 
         # prcp
         dfstat.boxplot(column='mae', by='prcp', ax=axs[0], grid=False,
                        widths=0.2, showfliers=False)
         dfstat.boxplot(column='stdq', by='prcp', ax=axs[3], grid=False,
                        widths=0.2, showfliers=False)
-        dfstat.boxplot(column='r2', by='prcp', ax=axs[6], grid=False,
+        dfstat.boxplot(column='pareto', by='prcp', ax=axs[6], grid=False,
                        widths=0.2, showfliers=False)
 
         # glena
@@ -850,7 +852,7 @@ def boxplot_params(glcdict, pout):
                        widths=0.2, showfliers=False)
         dfstat.boxplot(column='stdq', by='glena', ax=axs[4], grid=False,
                        widths=0.2, showfliers=False)
-        dfstat.boxplot(column='r2', by='glena', ax=axs[7], grid=False,
+        dfstat.boxplot(column='pareto', by='glena', ax=axs[7], grid=False,
                        widths=0.2, showfliers=False)
 
         # mbbias
@@ -858,7 +860,7 @@ def boxplot_params(glcdict, pout):
                        widths=0.2, showfliers=False)
         dfstat.boxplot(column='stdq', by='mbbias', ax=axs[5], grid=False,
                        widths=0.2, showfliers=False)
-        dfstat.boxplot(column='r2', by='mbbias', ax=axs[8], grid=False,
+        dfstat.boxplot(column='pareto', by='mbbias', ax=axs[8], grid=False,
                        widths=0.2, showfliers=False)
 
         name = GLCDICT.get(rgi_id)[2]
@@ -876,8 +878,8 @@ def boxplot_params(glcdict, pout):
 
         outdict[glid] = dfstat
 
-    outdictpath = os.path.join(pout, 'statistics.p')
-    pickle.dump(outdict, open(outdictpath, 'wb'))
+    # outdictpath = os.path.join(pout, 'statistics.p')
+    # pickle.dump(outdict, open(outdictpath, 'wb'))
 
 
 def xkcdplot(glcs, paretodict):
