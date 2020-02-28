@@ -85,13 +85,14 @@ def get_glamos(rgiids, firstyear=1850):
         # select glacier from glamos data
         glc = glamos.loc[glamos['glacier id'] == gid, :]
 
+        # select only suitable times
+        glc = glc.loc[pd.DatetimeIndex(glc['start date of observation']).
+                      year >= firstyear]
+
         # find first year of observation
         t0 = pd.DatetimeIndex(glc['start date of observation']).year[0]
         dl = glc['length change'].astype(float).cumsum()
         yr = pd.DatetimeIndex(glc['end date of observation']).year
-
-        if np.any(yr < firstyear):
-            raise ValueError
 
         # new dataframe for complete time series
         df = pd.Series(index=np.arange(firstyear, 2020))
