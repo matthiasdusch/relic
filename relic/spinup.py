@@ -107,7 +107,7 @@ def final_spinup(tbias, mb, fls, dl, len2003, delta, gdir, filesuffix='_spinup')
     yrs = 50
     dl_spinup = model.length_m - len2003
 
-    while delta < (dl - dl_spinup):
+    while delta < (dl - dl_spinup)*2:
         model.run_until(yrs)
         dl_spinup = model.length_m - len2003
         yrs += 5
@@ -175,7 +175,7 @@ def systematic_spinup(gdir, meta, glena=None):
             if delta == len2003**2:
                 delta = np.nan
             rval.loc[tb, 'delta'] = delta
-            if np.sqrt(delta) < fls[-1].dx_meter:
+            if np.sqrt(delta) < fls[-1].dx_meter*2:
                 found_fit = True
                 break
         if found_fit is True:
