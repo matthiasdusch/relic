@@ -352,6 +352,10 @@ def quick_plot(glcdict, pout, y_len=5):
 
     for glid, df in glcdict.items():
 
+        # recalc for 1980
+        ix1980 = df.dropna().index[0]
+        df.loc[:, df.columns != 'obs'] += df.loc[ix1980, 'obs']
+
         # take care of merged glaciers
         rgi_id = glid.split('_')[0]
 
@@ -503,6 +507,122 @@ def quick_plot(glcdict, pout, y_len=5):
         # reference run (basically min mae)
         df.loc[:, idx2plot[0]].rolling(y_len, center=True).mean(). \
             plot(ax=ax1, linewidth=3, color='C4')
+
+        name = GLCDICT.get(rgi_id)[2]
+
+        from relic.postprocessing import rmse_weighted
+        mae_ens = mae_weighted(pd.concat([ensmean, df['obs']], axis=1))[0]
+        rmse_ens = rmse_weighted(pd.concat([ensmean, df['obs']], axis=1))[0]
+        mae_best = maes[0]
+        rmse_best = rmse_weighted(df, normalised=False).sort_values()[0]
+
+        sprd = np.sqrt(df.loc[:, idx2plot2].var(axis=1).mean())
+
+        rmspread = rmse_ens/sprd
+
+        ax1.set_title('%s' % name, fontsize=28)
+        ax1.text(2030, -2000, '%d ensemble members\n'
+                              'coverage = %.2f\n'
+                              'skill (RMSE / SPREAD) = %.2f\n'
+                              'RMSE ensemble = %.2f\n'
+                              'RMSE best = %.2f\n'
+                              'MAE enselbe = %.2f\n'
+                              'MAE best = %.2f' %
+                 (len(idx2plot2), cov, rmspread, rmse_ens, rmse_best, mae_ens,
+                  mae_best), fontsize=18)
+        ax1.set_ylabel('relative length change [m]', fontsize=26)
+        ax1.set_xlabel('Year', fontsize=26)
+        ax1.set_xlim([1850, 2020])
+        ax1.set_ylim([-3500, 1000])
+        ax1.tick_params(axis='both', which='major', labelsize=22)
+        ax1.grid(True)
+
+        ax1.legend(bbox_to_anchor=(1.04, 1), loc='upper left', fontsize=14)
+        # fig1.subplots_adjust(right=0.7)
+        fig1.tight_layout()
+        fn1 = os.path.join(pout, 'histalp_%s.png' % glid)
+        fig1.savefig(fn1)
+
+
+def quick_crossval(glcdict, glcdict_1980, pout, y_len=5):
+
+    for glid, df in glcdict.items():
+
+        if glid == 'RGI60-11.02709_merged':
+            continue
+        if glid == 'RGI60-11.02051_merged':
+            continue
+
+        df80 = glcdict_1980[glid]
+        # recalc for 1980
+        ix1980 = df80.dropna().index[0]
+        df80.loc[:, df80.columns != 'obs'] += df80.loc[ix1980, 'obs']
+
+        fullobs = df.loc[:, 'obs']
+        df = df.loc[:ix1980-1, df80.columns]
+
+        # take care of merged glaciers
+        rgi_id = glid.split('_')[0]
+
+        fig1, ax1 = plt.subplots(figsize=[21, 7])
+
+        fullobs.plot(ax=ax1, color='k', marker='o',
+                     label='Observed length change')
+
+        # OGGM standard
+        for run in df.columns:
+            if run == 'obs':
+                continue
+            para = ast.literal_eval('{' + run + '}')
+            if ((np.abs(para['prcp_scaling_factor'] - 1.75) < 0.01) and
+                    (para['mbbias'] == 0) and
+                    (para['glena_factor'] == 1)):
+                df.loc[:, run].rolling(y_len, center=True). \
+                    mean().plot(ax=ax1, linewidth=2, color='k',
+                                label='OGGM default parameters')
+
+        # get MAEs
+        maes = mae_weighted(df, normalised=False).sort_values()
+
+        q10 = int(df.shape[1]/10)
+
+        idx2plot = maes.index
+
+        from relic.postprocessing import fit_one_std_2g
+
+        idx2plot2, cov = fit_one_std_2g(df.loc[:, idx2plot], df.loc[:, 'obs'], glid, minuse=5, maxuse=20)
+
+        # -------- 1850 ----------
+        ensmean = df.loc[:, idx2plot2].mean(axis=1)
+        ensmeanmean = ensmean.rolling(y_len, center=True).mean()
+
+        ensstdmean = df.loc[:, idx2plot2].std(axis=1).rolling(y_len, center=True).mean()
+
+        ax1.fill_between(ensmeanmean.index, ensmeanmean - ensstdmean,
+                         ensmeanmean + ensstdmean, color='C0', alpha=0.6)
+        ax1.plot(0, 0, color='C0', linewidth=10, label='ensemble mean +/- 1 std')
+
+        ensmeanmean.plot(ax=ax1, linewidth=4.0, color='C1', label='ensemble mean')
+
+        # reference run (basically min mae)
+        df.loc[:, idx2plot[0]].rolling(y_len, center=True).mean(). \
+            plot(ax=ax1, linewidth=3, color='C4')
+
+        # -------- 1980 ----------
+        ensmean80 = df80.loc[:, idx2plot2].mean(axis=1)
+        ensmeanmean80 = ensmean80.rolling(y_len, center=True).mean()
+
+        ensstdmean80 = df80.loc[:, idx2plot2].std(axis=1).rolling(y_len, center=True).mean()
+
+        ax1.fill_between(ensmeanmean80.index, ensmeanmean80 - ensstdmean80,
+                         ensmeanmean80 + ensstdmean80, color='C2', alpha=0.6)
+        ax1.plot(0, 0, color='C0', linewidth=10, label='ensemble mean +/- 1 std')
+
+        ensmeanmean80.plot(ax=ax1, linewidth=4.0, color='C3', label='ensemble mean')
+
+        # reference run (basically min mae)
+        df80.loc[:, idx2plot[0]].rolling(y_len, center=True).mean(). \
+            plot(ax=ax1, linewidth=3, color='C5')
 
         name = GLCDICT.get(rgi_id)[2]
 

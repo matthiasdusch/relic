@@ -84,6 +84,8 @@ def get_glamos(rgiids, firstyear=1850):
 
         # select glacier from glamos data
         glc = glamos.loc[glamos['glacier id'] == gid, :]
+        # save init first year for some few merge scenarios
+        t_init = pd.DatetimeIndex(glc['start date of observation']).year[0]
 
         # select only suitable times
         glc = glc.loc[pd.DatetimeIndex(glc['start date of observation']).
@@ -109,12 +111,14 @@ def get_glamos(rgiids, firstyear=1850):
         elif rgi == 'RGI60-11.02051':
             # Tschierva: add Roseg length
             roseg = glamos.loc[glamos['glacier id'] == 'E23/11', :]
-            df = add_merge_length(df, roseg)
+            if firstyear < t_init:
+                df = add_merge_length(df, roseg, firstyear)
 
         elif rgi == 'RGI60-11.02709':
             # Mine: add Ferpecle length
             ferp = glamos.loc[glamos['glacier id'] == 'B72/11', :]
-            df = add_merge_length(df, ferp)
+            if firstyear < t_init:
+                df = add_merge_length(df, ferp, firstyear)
 
         # get first measurement
         dfmeta.loc[rgi, 'first'] = df.dropna().index[0]
@@ -236,18 +240,18 @@ def _get_2003_dl(glc, name=None):
     return dl2003
 
 
-def add_merge_length(main, merge):
+def add_merge_length(main, merge, firstyear=1850):
+    # select only suitable times
+    merge = merge.loc[pd.DatetimeIndex(merge['start date of observation']).
+                      year >= firstyear]
 
     # find first year of observation
     t0 = pd.DatetimeIndex(merge['start date of observation']).year[0]
     dl = merge['length change'].astype(float).cumsum()
     yr = pd.DatetimeIndex(merge['end date of observation']).year
 
-    if np.any(yr < 1850):
-        raise ValueError
-
     # new dataframe for complete time series
-    df = pd.Series(index=np.arange(1850, 2020))
+    df = pd.Series(index=np.arange(firstyear, 2020))
     df.loc[yr] = dl.values
     df.loc[t0] = 0
 

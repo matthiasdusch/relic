@@ -1606,7 +1606,10 @@ def fit_one_std_2g(_runs, obs, glid, minuse=5, maxuse=10):
                                 maxerr=True).idxmin()
         use.append(pix)
 
-        ens = runs.loc[:, use].mean(axis=1)
+        try:
+            ens = runs.loc[:, use].mean(axis=1)
+        except:
+            print(glid)
 
         usedf.loc[i, 'mae'] = mae_weighted(pd.concat([obs, ens], axis=1), normalised=False)[0]
         usedf.loc[i, 'maxerror'] = maxerror(pd.concat([obs, ens], axis=1), normalised=False)[0]
