@@ -343,6 +343,11 @@ def runs2df(runs, glenamin=0):
             if para['glena_factor'] < glenamin:
                 continue
 
+            if para['glena_factor'] < 1.4:
+                continue
+            if para['glena_factor'] > 1.6:
+                continue
+
 #            if para['glena_factor'] > 3:
 #                continue
 
@@ -409,6 +414,18 @@ def maxerror(df, normalised=False):
         return (maer - maer.min())/(maer.max()-maer.min())
     else:
         return maer
+
+
+def cumerror(df, normalised=False):
+    # accumulated difference change
+    car = df.loc[:, df.columns != 'obs'].sub(df.loc[:, 'obs'], axis=0). \
+        dropna().diff().abs().cumsum(axis=0).iloc[-1]
+
+    if normalised:
+        # return maeall/maeall.max()
+        raise NotImplementedError
+    else:
+        return car
 
 
 def maxerror_smaller_than(df, maxer=None):
@@ -1292,7 +1309,8 @@ def pareto_coverage_4(runs, obs, use, cov=False, rmse=False, mae=True, spread=Tr
     return edisx
 
 
-def pareto_coverage_3(runs, obs, use, cov=False, rmse=False, mae=True, spread=True, skill=False, only_improve_skill=False, weighted=True, only_improve_coverage=False, maxerr=False):
+def pareto_coverage_3(runs, obs, use, cov=False, rmse=False, mae=True, spread=True, skill=False, only_improve_skill=False, weighted=True, only_improve_coverage=False, maxerr=False,
+                      return_minimum=False, return_rank0=False):
 
     if mae:
         mac = mae_coverage_2(runs, use, obs, normalised=True, weighted=False)
@@ -1367,14 +1385,26 @@ def pareto_coverage_3(runs, obs, use, cov=False, rmse=False, mae=True, spread=Tr
                         1 * cover**2 +
                         1 * mac**2 +
                         1 * maxe**2 +
-                        1 * rmsp**2 +
+                        2 * rmsp**2 +
                         1 * rms**2
                         ).sort_values()
     except AttributeError:
         # if all zero, return MAE
         return mae_coverage_2(runs, use, obs, normalised=True, weighted=weighted).sort_values()
 
-    return edisx
+    if return_minimum:
+        return edisx.idxmin()
+    elif return_rank0:
+
+        rank = edisx.copy()
+        for ix, _ in rank.iteritems():
+            rank[ix] = ((mac < mac[ix]) &
+                        (rmsp < rmsp[ix])).sum()
+
+        r0 = rank[rank == 0].index
+        return r0
+    else:
+        return edisx
 
 
 def fit_one_std_2(runs, obs, glid):
@@ -1581,7 +1611,6 @@ def fit_one_std_2h(_runs, obs, glid, minuse=5, maxuse=10):
     # return usedf.loc[i, 'use'], usedf.loc[i, 'coverage']
 
 
-
 def fit_one_std_2g(_runs, obs, glid, minuse=5, maxuse=10):
     # goal of 2g:
     # select runs based on MAE (only? or + spread or something)
@@ -1710,6 +1739,7 @@ def fit_one_std_2f(_runs, obs, glid, minuse=5, maxuse=10):
         return usedf.loc[edisx.idxmin(), 'use'], usedf.loc[edisx.idxmin(), 'coverage']
     except:
         print('asd')
+
 
 def fit_one_std_2e(_runs, obs, glid, minuse=5, maxuse=10, detrend=False):
     # naja, fast 2c besser
@@ -1902,3 +1932,1172 @@ def best_powerset(df, idx):
         stats.loc[key, 'number'] = len(item)
 
     return pdict[stats.sort_values('stats').index[-1]]
+
+
+def pareto_nach_rye(df, glid):
+    # goal:
+    # - calc pareto fuer alle runs mir MAE+cummulative error+irgendwas mit SD, correlation etc.
+    # - scatter plot (1x3) mit allen combis.
+    # - bold rank 0 values
+    # - calc coverage and model skill
+    # - return rank 0 values
+
+    maes = mae_weighted(df, normalised=False, detrend=False)
+    stdq = std_quotient(df, normalised=False)
+    stdq = np.abs(1 - stdq)
+    maxr = maxerror(df, normalised=False)
+
+    car = cumerror(df, normalised=False).astype(float)
+
+    # euclidian dist
+    edisx = np.sqrt(1 * maes ** 2 +
+                    1 * maxr**2 +
+                    1 * car ** 2
+                    ).sort_values()
+
+    # pareto front
+
+    rank = edisx.copy()
+
+    for ix, _ in edisx.iteritems():
+        rank[ix] = ((maes < maes[ix]) &
+                    (maxr < maxr[ix]) &
+                    (car < car[ix])).sum()
+
+    r0 = rank[rank == 0].index
+
+    import matplotlib.pyplot as plt
+
+    fig, (ax0, ax1, ax2) = plt.subplots(1, 3, figsize=[20, 8])
+
+    ax0.plot(maes, maxr, '.k', color='0.3')
+    ax0.plot(maes[r0], maxr[r0], 'or')
+    ax0.set_xlabel('MAE')
+    ax0.set_xlim([0, maes[r0].max()])
+    ax0.set_ylabel('MAX')
+    ax0.set_ylim([0, maxr[r0].max()])
+
+    ax1.plot(maes, car, '.k', color='0.3')
+    ax1.plot(maes[r0], car[r0], 'or')
+    ax1.set_xlabel('MAE')
+    ax1.set_xlim([0, maes[r0].max()])
+    ax1.set_ylabel('CAR')
+    ax1.set_ylim([0, car[r0].max()])
+
+    ax2.plot(maxr, car, '.k', color='0.3')
+    ax2.plot(maxr[r0], car[r0], 'or')
+    ax2.set_xlabel('MAX')
+    ax2.set_xlim([0, maxr[r0].max()])
+    ax2.set_ylabel('CAR')
+    ax2.set_ylim([0, car[r0].max()])
+
+    rgi_id = glid.split('_')[0]
+    fig.suptitle('{} - {}'.format(GLCDICT[rgi_id][2], glid))
+    #plt.show()
+    fig.savefig('/home/matthias/length_change_1850/neu/pareto{}.png'.format(glid))
+
+    return r0
+
+
+def pareto_nach_rye2(df, glid):
+    # goal:
+    # - 1. use min MAE
+    # - calc paretoe: MAE, SKILL, (SPREAD?)
+    # - use whole paretor front
+    # repeat until coverage
+    runs = df.loc[:, df.columns != 'obs']
+    obs = df.loc[:, 'obs']
+    # list which indices to use
+    use = [mae_weighted(df, normalised=False).idxmin()]
+    print('{}: {:3d} |{:5.2f} |{:7.2f} |{:7.2f} |{:5.2f}'.
+          format(glid, len(use), 0, 0,
+                 mae_weighted(df, normalised=False).min(), 0))
+
+    cov = 0
+
+    while cov < 1:
+
+        pix = pareto_coverage_3(runs, obs, use,
+                                cov=True, mae=True, rmse=False, spread=True,
+                                skill=False, only_improve_skill=False,
+                                weighted=True, only_improve_coverage=False,
+                                maxerr=False,
+                                return_minimum=True,
+                                return_rank0=False)
+
+        use.append(pix)
+        #use += pix.to_list()
+
+        try:
+            ens = runs.loc[:, use].mean(axis=1)
+        except:
+            print(glid)
+
+        maer = ens.sub(obs, axis=0).dropna().abs().mean()
+        rms = np.sqrt((ens.sub(obs, axis=0).dropna()**2).mean())
+        sprd = np.sqrt(runs.loc[:, use].var(axis=1).mean())
+
+        rmssprd = rms/sprd
+
+        cov = calc_coverage_2(runs, use, obs)
+
+        print('{}: {:3d} |{:5.2f} |{:7.2f} |{:7.2f} |{:5.2f}'.
+              format(glid, len(use), cov, sprd, maer, rmssprd))
+
+        if len(use) == 10:
+            break
+
+    return use
+
+
+def montec(df, glid):
+    # goal
+    # sample 5-10 random members
+    # calc mae, coverage, skill
+    # use best set
+    import warnings
+    warnings.filterwarnings("ignore", category=RuntimeWarning)
+
+    obs = df['obs']
+
+    # we sample from 50 smallest errors (pos and neg bias)
+    me = df.loc[:, df.columns != 'obs'].sub(df.loc[:, 'obs'], axis=0). \
+        dropna().mean()
+    mepl = me[me > 0].sort_values().index[:100]
+    memi = me[me < 0].sort_values(ascending=False).index[:100]
+    best = mepl.append(memi)
+
+    print('{}: {:3} | {:5} | {:7} | {:7} | {:7} | {:5} | {:6}'.
+          format(glid, 'use', 'cov', 'spread', 'MAE', 'MAX', 'skill', 'pareto')),
+
+    usedf = pd.DataFrame([], columns=['mae', 'spread', 'cov', 'skill', 'use',
+                                      'pareto', 'max'])
+
+    np.random.seed(42)
+
+    import time
+    t1 = time.time()
+    # how many times do we try
+    for i in range(100000):
+
+        # how many samples
+        n = np.random.randint(10, 30)
+
+        # which runs
+        runint = np.random.randint(0, len(best), n)
+        # sort and unique
+        runint.sort()
+        runint = np.unique(runint)
+        use = best[runint]
+
+        cov = calc_coverage_2(df, use, obs)
+
+        if cov < 0.7:
+            continue
+
+        ens = df.loc[:, use].mean(axis=1)
+
+        rms = np.sqrt((ens.sub(obs, axis=0).dropna()**2).mean())
+        sprd = np.sqrt(df.loc[:, use].var(axis=1).mean())
+        skill = rms/sprd
+
+        if (skill < 0.8) or (skill > 1.2):
+            continue
+
+        maew = mae_weighted(pd.concat([obs, ens], axis=1),
+                            normalised=False, weighted=True)[0]
+        maxe = maxerror(pd.concat([obs, ens], axis=1), normalised=False)[0]
+
+        #print('{}: {:3d} |{:5.2f} |{:7.2f} |{:7.2f} |{:5.2f}'.
+        #      format(glid, len(use), cov, sprd, maer, skill))
+
+        usedf.loc[i, 'mae'] = maew
+        usedf.loc[i, 'max'] = maxe
+        usedf.loc[i, 'spread'] = sprd
+        usedf.loc[i, 'cov'] = cov
+        usedf.loc[i, 'skill'] = skill
+        usedf.loc[i, 'use'] = use
+
+    if len(usedf) == 0:
+        return mepl[0:2]
+
+    # reduce size
+    usedf_red = usedf.loc[(usedf['cov'] > 0.7) &
+                          (usedf['skill'] > 0.8) &
+                          (usedf['skill'] < 1.2), :]
+
+    if len(usedf_red) > 1:
+        usedf = usedf_red
+
+    maew = usedf['mae'].astype(float)
+    # maewn = (maew - maew.min()) / (maew.max() - maew.min())
+    maewn = maew / maew.max()
+    maxe = usedf['max'].astype(float)
+    # maxen = (maxe - maxe.min()) / (maxe.max() - maxe.min())
+    maxen = maxe / maxe.max()
+
+    skill = (1-usedf['skill'].astype(float)).abs()
+    # skilln = (skill - skill.min()) / (skill.max() - skill.min())
+    skilln = skill / skill.max()
+    cov = (1 - usedf['cov'].astype(float)).abs()
+    # covn = (cov - cov.min()) / (cov.max() - cov.min())
+    covn = cov / cov.max()
+
+    # euclidian dist
+    edisx = np.sqrt(1 * maewn**2 +
+                    0 * skilln**2 +
+                    1 * maxen**2 +
+                    0 * covn**2
+                    )
+    usedf['pareto'] = edisx
+
+    ix = usedf.sort_values('pareto').index[0]
+    print('{}: {:3d} | {:5.2f} | {:7.2f} | {:7.2f} | {:7.2f} | {:5.2f} | {:6.2f}'.
+          format(glid, len(usedf.loc[ix, 'use']),
+                 usedf.loc[ix, 'cov'],
+                 usedf.loc[ix, 'spread'],
+                 usedf.loc[ix, 'mae'],
+                 usedf.loc[ix, 'max'],
+                 usedf.loc[ix, 'skill'],
+                 usedf.loc[ix, 'pareto']))
+
+    ix2 = usedf.sort_values('mae').index[0]
+    print('{}: {:3d} | {:5.2f} | {:7.2f} | {:7.2f} | {:7.2f} | {:5.2f} | {:6.2f}'.
+          format(glid, len(usedf.loc[ix2, 'use']),
+                 usedf.loc[ix2, 'cov'],
+                 usedf.loc[ix2, 'spread'],
+                 usedf.loc[ix2, 'mae'],
+                 usedf.loc[ix2, 'max'],
+                 usedf.loc[ix2, 'skill'],
+                 usedf.loc[ix2, 'pareto']))
+    print('time (sec): {}'.format(time.time() - t1))
+    return usedf.loc[ix, 'use']
+
+
+def fit_cov_and_skill(_runs, obs, glid, minuse=5, maxuse=30):
+    runs = deepcopy(_runs)
+
+    if minuse > maxuse:
+        raise ValueError
+
+    # list which indices to use
+    use = []
+
+    usedf = pd.DataFrame([], columns=['mae', 'maxerror', 'rmse', 'spread', 'coverage', 'mae-spread', 'rms-spread', 'rmswg-spread', 'use'])
+
+    for i in range(1, maxuse+1):
+
+        pix = pareto_only_improve(runs, obs, use,
+                                  cov=True, mae=True, rmse=False, spread=False,
+                                  skill=True, weighted=True,
+                                  maxerr=False).idxmin()
+        #pix = pareto_coverage_3(runs, obs, use,
+        #                        cov=True, mae=True, rmse=False,
+        #                        spread=False,
+        #                        skill=True, weighted=True, only_improve_skill=False,
+        #                        only_improve_coverage=False,
+        #                        return_minimum=False,
+        #                        maxerr=True).idxmin()
+        use.append(pix)
+
+        try:
+            ens = runs.loc[:, use].mean(axis=1)
+        except:
+            print(glid)
+
+        usedf.loc[i, 'mae'] = mae_weighted(pd.concat([obs, ens], axis=1), normalised=False)[0]
+        usedf.loc[i, 'maxerror'] = maxerror(pd.concat([obs, ens], axis=1), normalised=False)[0]
+        usedf.loc[i, 'rmse'] = rmse_weighted(pd.concat([obs, ens], axis=1), normalised=False)[0]
+        usedf.loc[i, 'spread'] = np.sqrt(runs.loc[:, use].var(axis=1).mean())
+
+        maer = ens.sub(obs, axis=0).dropna().abs().mean()
+        rms = np.sqrt((ens.sub(obs, axis=0).dropna()**2).mean())
+        rmsewg = rmse_weighted(pd.concat([obs, ens], axis=1), normalised=False, weighted=True)[0]
+        sprd = np.sqrt(runs.loc[:, use].var(axis=1).mean())
+
+        usedf.loc[i, 'rms-spread'] = rms/sprd
+        usedf.loc[i, 'rmswg-spread'] = rmsewg/sprd
+        usedf.loc[i, 'mae-spread'] = maer/sprd
+
+        usedf.loc[i, 'coverage'] = calc_coverage_2(runs, use, obs)
+        usedf.loc[i, 'use'] = use.copy()
+
+        print('%s: %2d, %.2f, %.2f, %.2f' % (glid, len(use), usedf.loc[i, 'coverage'], usedf.loc[i, 'mae'], usedf.loc[i, 'rmswg-spread']))
+
+        skll = usedf.loc[i, 'rmswg-spread'].astype(float)
+        skll = 1 / skll if skll > 1 else skll
+
+        #if (i >= minuse) and (usedf.loc[i, 'coverage'] >= 0.7) and (skll >= 0.8):
+        #    print('%s: %2d, %.2f, %.2f, %.2f --- break' % (
+        #        glid, len(usedf.loc[i, 'use']), usedf.loc[i, 'coverage'],
+        #        usedf.loc[i, 'mae'],
+        #        usedf.loc[i, 'rmswg-spread']))
+        #    return usedf.loc[i, 'use']
+
+    #return usedf.loc[i, 'use']
+
+    useindex = usedf.loc[minuse:, :].index
+
+    mincov = min(0.7, usedf.loc[useindex, 'coverage'].max())
+
+    useindex = usedf.loc[useindex, :].loc[usedf['coverage']>=mincov].index
+
+    rmsp = usedf.loc[useindex, 'rmswg-spread'].astype(float)
+    rmsp[rmsp > 1] = 1 / rmsp[rmsp > 1]
+
+    id1 = rmsp.idxmax()
+
+
+    print('%s: %2d, %.2f, %.2f, %.2f' % (
+    glid, len(usedf.loc[id1, 'use']), usedf.loc[id1, 'coverage'],
+    usedf.loc[id1, 'mae'],
+    usedf.loc[id1, 'rmswg-spread']))
+
+
+    #sk = usedf.loc[useindex, 'rmswg-spread'].astype(float)
+    sk = usedf.loc[:, 'rmswg-spread'].astype(float)
+    sk[sk > 1] = 1/sk[sk > 1]
+    sk = (1-sk).abs()
+    #sk = sk / sk.max()
+    # cv = (1-usedf.loc[useindex, 'coverage'].astype(float)).abs()
+    cv = (1 - usedf.loc[:, 'coverage'].astype(float)).abs()
+    #cv = cv / cv.max()
+
+    id2 = np.sqrt(cv ** 2 + sk ** 2).idxmin()
+    print('%s: %2d, %.2f, %.2f, %.2f' % (
+        glid, len(usedf.loc[id2, 'use']), usedf.loc[id2, 'coverage'],
+        usedf.loc[id2, 'mae'],
+        usedf.loc[id2, 'rmswg-spread']))
+
+
+    id3 = sk.idxmin()
+
+    print('%s: %2d, %.2f, %.2f, %.2f' % (
+        glid, len(usedf.loc[id3, 'use']), usedf.loc[id3, 'coverage'],
+        usedf.loc[id3, 'mae'],
+        usedf.loc[id3, 'rmswg-spread']))
+
+    return usedf.loc[id1, 'use']
+
+
+    me = usedf.loc[useindex, 'mae'].astype(float)
+    me = me / me.max()
+
+    ma = usedf.loc[minuse:, 'maxerror'].astype(float)
+    ma = ma / ma.max()
+
+    #edis = np.sqrt(cv**2 + sk**2)
+    edis = np.sqrt(cv ** 2 + sk ** 2 + ma ** 2 + me ** 2)
+    idx = edis.idxmin()
+
+    #for i in usedf.loc[idx, 'use']:
+    #    print(i)
+    return usedf.loc[idx, 'use']
+
+
+def pareto_only_improve(runs, obs, use, cov=False, rmse=False, mae=True, spread=True, skill=False, weighted=True, maxerr=False):
+
+    if mae:
+        mac = mae_coverage_2(runs, use, obs, normalised=True, weighted=False)
+    else:
+        mac = 0
+
+    if maxerr:
+        maxe = maxerror_coverage(runs, use, obs, normalised=True)
+    else:
+        maxe = 0
+
+    if rmse:
+        rms = rmse_coverage_2(runs, use, obs, normalised=True, weighted=weighted)
+    else:
+        rms = 0
+
+    if spread and (len(use) > 0):
+        stc = std_coverage(runs, use, normalised=True)
+    else:
+        stc = 0
+
+    if cov and (len(use) > 0):
+        cover = coverage_loop(runs, use, obs, normalised=False)
+        oldcov = calc_coverage_2(runs, use, obs)
+        # threshold: everything smaller we neglect
+        thresh = min(oldcov+0.01, 0.7)
+        cover[cover < thresh] = np.nan
+        #cover[cover < oldcov] = np.nan
+        # normalise
+        cover = cover/cover.max()
+    else:
+        cover = 0
+
+    if skill and (len(use) > 0):
+        rm = rmse_coverage_2(runs, use, obs, normalised=False, weighted=weighted)
+        st2 = std_coverage(runs, use, normalised=False)
+        rmsp = rm/st2
+        # normalise all values to smaller 1
+        rmsp[rmsp > 1] = 1 / rmsp[rmsp > 1]
+
+        ens = runs.loc[:, use].mean(axis=1)
+        # TODO RMSE_WEIGHTED?
+        oldrms = rmse_weighted(pd.concat([obs, ens], axis=1),
+                               weighted=weighted)[0]
+        oldspr = np.sqrt(runs.loc[:, use].var(axis=1).mean())
+        oldskill = oldrms / oldspr
+        oldskill = 0 if np.isnan(oldskill) else oldskill
+        # normalise values to smaller 1
+        oldskill = 1/oldskill if oldskill > 1 else oldskill
+
+        # threshold: everything smaller we neglect
+        thresh = min(oldskill, 0.7)
+        rmsp[rmsp < thresh] = np.nan
+        #rmsp[rmsp < oldskill] = np.nan
+
+        # normalise to zero
+        rmsp = (1 - rmsp).abs()
+        rmsp = rmsp / rmsp.max()
+
+    else:
+        rmsp = 0
+
+    try:
+        edisx = np.sqrt(0 * stc**2 +
+                        0 * cover**2 +
+                        1 * mac**2 +
+                        0 * maxe**2 +
+                        0 * rmsp**2 +
+                        0 * rms**2
+                        ).sort_values()
+    except AttributeError:
+        # if all zero, return MAE
+        return mae_coverage_2(runs, use, obs, normalised=True, weighted=weighted).sort_values()
+
+    return edisx
+
+
+def pareto_only_improve2(runs, obs, use, edisp, maeref, skllref, covref):
+
+    mac = mae_coverage_2(runs, use, obs, normalised=False, weighted=True)
+    mac2 = mac/mac.max()
+
+    mae3 = mac/maeref
+
+    maxe = maxerror_coverage(runs, use, obs, normalised=False)
+    maxe2 = maxe/maxe.max()
+
+    mape = mape_coverage(runs, use, obs)
+
+    # coverage
+    if len(use) > 0:
+        cover = coverage_loop(runs, use, obs, normalised=False)
+        # normalise
+        #cover[cover > 0.68] = 1
+
+        if 0:
+            oldcov = calc_coverage_2(runs, use, obs)
+            # threshold: everything smaller we neglect
+            #thresh = min(oldcov + 0.01, 0.7)
+            cover[cover < oldcov] = np.nan
+            # cover[cover < oldcov] = np.nan
+
+        # normalise
+        cover = (1 - cover).abs()
+        cover2 = cover / cover.max()
+        cover3 = cover / covref
+
+    else:
+        cover = 0
+        cover2 = 0
+
+    if len(use) > 0:
+        rm = rmse_coverage_2(runs, use, obs, normalised=False, weighted=True)
+        st2 = std_coverage(runs, use, normalised=False)
+        rmsp = rm/st2
+        #rmsp = mac / st2
+        # normalise all values to smaller 1
+        rmsp[rmsp > 1] = 1 / rmsp[rmsp > 1]
+
+        if 0:
+            ens = runs.loc[:, use].mean(axis=1)
+            # TODO RMSE_WEIGHTED?
+            #oldrms = rmse_weighted(pd.concat([obs, ens], axis=1),
+            #                       weighted=True)[0]
+            oldrms = mae_weighted(pd.concat([obs, ens], axis=1),
+                                  weighted=True)[0]
+            oldspr = np.sqrt(runs.loc[:, use].var(axis=1).mean())
+            oldskill = oldrms / oldspr
+            oldskill = 0 if np.isnan(oldskill) else oldskill
+            # normalise values to smaller 1
+            oldskill = 1 / oldskill if oldskill > 1 else oldskill
+
+            # threshold: everything smaller we neglect
+            #thresh = min(oldskill, 0.7)
+            rmsp[rmsp < oldskill] = np.nan
+
+        # normalise to zero
+        rmsp = (1 - rmsp).abs()
+        rmsp2 = rmsp / rmsp.max()
+        rmsp3 = rmsp / skllref
+
+
+    else:
+        rmsp = 0
+        rmsp2 = 0
+
+    edisx = np.sqrt(1 * cover**2 +
+                    0 * mac**2 +
+                    1 * rmsp**2
+                    ).sort_values()
+
+    edisx2 = np.sqrt(1 * cover2 ** 2 +
+                     1 * mac2 ** 2 +
+                     0 * maxe2 ** 2 +
+                     1 * rmsp2 ** 2
+                     ).sort_values()
+
+    edisx[edisx > edisp] = np.nan
+    edisx2[edisx2 > edisp] = np.nan
+
+    edisx3 =  rmsp3 + mae3
+    #edisx3[edisx3 > edisp] = np.nan
+    edisx3[rmsp3 >= edisp] = np.nan
+
+    # return edisx3.idxmin(), edisx3.min()
+    if edisx3.idxmin() not in runs.columns:
+        rmspold = np.nan
+    else:
+        rmspold = rmsp3.loc[edisx3.idxmin()]
+    return edisx3.idxmin(), rmspold
+
+
+def pareto_skll_cov(runs, obs, use, edisp):
+
+    mae = mae_coverage_2(runs, use, obs, normalised=False, weighted=True)
+    maen = mae / mae.max()
+
+    cover = coverage_loop(runs, use, obs, normalised=False)
+    # normalise
+    cover = (1 - cover).abs()
+    cover=cover/cover.max()
+
+    # skll
+    rmse = rmse_coverage_2(runs, use, obs, normalised=False, weighted=True)
+    sprd = std_coverage(runs, use, normalised=False)
+    skll = rmse/sprd
+
+    # normalise all values to smaller 1
+    skll[skll > 1] = 1 / skll[skll > 1]
+    # normalise to zero
+    skll = (1 - skll).abs()
+    skll = skll/skll.max()
+
+    edisx = np.sqrt(cover**2 + skll**2 + maen**2)
+    return edisx.idxmin(), edisp
+
+    edisx[edisx > edisp] = np.nan
+
+    # return edisx3.idxmin(), edisx3.min()
+    if edisx.idxmin() not in runs.columns:
+        edisp = np.nan
+    else:
+        edisp = edisx.min()
+
+
+
+
+def pareto_skill(runs, obs, use, oldnskll):
+
+    mae = mae_coverage_2(runs, use, obs, normalised=False, weighted=True)
+    #mae = mae/mae.max()
+
+    #rmse = rmse_coverage_2(runs, use, obs, normalised=False, weighted=False)
+    sprd = std_coverage(runs, use, normalised=False)
+
+    #skll = rmse/sprd
+    skll = mae / sprd
+
+    # normalise all values to smaller 1
+    skll[skll > 1] = 1 / skll[skll > 1]
+
+    mae[skll < oldnskll+0.02] = np.nan
+
+    # normalise to zero
+    #nskll = (1 - skll).abs()
+    # normalise skill
+    #nskll = nskll / nskll.max()
+
+    #if (nskll.min() < 0.05) and (len(use) >= 5):
+    #    return None, np.nan
+
+    # only improve skill
+    #nskll[nskll > oldnskll] = np.nan
+
+    #edisx = np.sqrt(0 * nskll**2 + mae**2)
+
+    try:
+        oldnskll = skll.loc[mae.idxmin()]
+    except:
+        oldnskll = np.nan
+
+    return mae.idxmin(), oldnskll
+
+
+def fit_cov_and_skill2(_runs, obs, glid, minuse=5, maxuse=30):
+    runs = deepcopy(_runs)
+
+    if minuse > maxuse:
+        raise ValueError
+
+    # list which indices to use
+    maestart = mae_weighted(pd.concat([obs, runs], axis=1), weighted=True).sort_values()
+    #rmsestart = rmse_weighted(pd.concat([obs, runs], axis=1), normalised=False, weighted=False).sort_values()
+
+    #use = maestart.to_list()
+    use = maestart.index[:5].to_list()
+    #use = [maestart.index[0]]
+
+    usedf = pd.DataFrame([], columns=['mae', 'maxerror', 'coverage', 'rmswg-spread','mae-spread', 'use', 'edisp', 'mape'])
+
+
+    edisp = 1
+    for i in range(1, maxuse+1):
+        #while True:
+
+        try:
+            ens = runs.loc[:, use].mean(axis=1)
+        except:
+            print(glid)
+
+        usedf.loc[i, 'mae'] = mae_weighted(pd.concat([obs, ens], axis=1), normalised=False, weighted=True)[0]
+        #usedf.loc[i, 'maxerror'] = maxerror(pd.concat([obs, ens], axis=1), normalised=False)[0]
+
+        #rmsewg = rmse_weighted(pd.concat([obs, ens], axis=1), normalised=False, weighted=False)[0]
+        sprd = np.sqrt(runs.loc[:, use].var(axis=1).mean())
+
+        #usedf.loc[i, 'rmswg-spread'] = rmsewg/sprd
+        usedf.loc[i, 'mae-spread'] = usedf.loc[i,'mae'] / sprd
+
+        usedf.loc[i, 'coverage'] = calc_coverage_2(runs, use, obs)
+
+        #usedf.loc[i, 'mape'] = mean_abs_percentage(pd.concat([obs, ens], axis=1), normalised=False)[0]
+
+        usedf.loc[i, 'use'] = use.copy()
+
+        #skll = usedf.loc[i, 'rmswg-spread'].astype(float)
+        #skll = 1 / skll if skll > 1 else skll
+        #cov = usedf.loc[i, 'coverage'].astype(float)
+
+        #maen = usedf.loc[i, 'mae']
+        #maen = maen/maen.max()
+
+        #edis = np.abs(1-skll) + np.abs(1-cov)
+        #usedf.loc[i, 'edis'] = edis
+
+        usedf.loc[i, 'edisp'] = edisp
+
+        print('%s: %2d, %.2f, %.2f, %.2f' % (glid, len(use), usedf.loc[i, 'coverage'], usedf.loc[i, 'mae'], usedf.loc[i, 'mae-spread']))
+
+        #skll = usedf.loc[i, 'rmswg-spread'].astype(float)
+        skll = usedf.loc[i, 'mae-spread'].astype(float)
+        skll = 1 / skll if skll > 1 else skll
+
+        if (skll > 0.95) and (len(use) >= 5):
+            return usedf.loc[i, 'use']
+
+        #pix, edisp = pareto_only_improve2(runs, obs, use, edisp, refmae, refskill, refcov)
+        pix, edisp = pareto_skill(runs, obs, use, skll)
+
+        if np.isnan(edisp):
+            return use
+            #break
+
+        use.append(pix)
+
+
+        #if (i >= minuse) and (usedf.loc[i, 'coverage'] >= 0.7) and (skll >= 0.8):
+        #    print('%s: %2d, %.2f, %.2f, %.2f --- break' % (
+        #        glid, len(usedf.loc[i, 'use']), usedf.loc[i, 'coverage'],
+        #        usedf.loc[i, 'mae'],
+        #        usedf.loc[i, 'rmswg-spread']))
+        #    return usedf.loc[i, 'use']
+
+    return use
+
+    skll = usedf.loc[5:, 'rmswg-spread'].astype(float)
+    skll[skll > 1] = 1 / skll[skll > 1]
+    return usedf.loc[skll.idxmax(), 'use']
+
+    return usedf.loc[usedf.loc[:, 'edisp'].astype(float).idxmin(), 'use']
+    return usedf.loc[usedf.loc[:, 'mae'].astype(float).idxmin(), 'use']
+
+    #skll = usedf.loc[:, 'rmswg-spread'].astype(float)
+    skll = usedf.loc[minuse:, 'mae-spread'].astype(float)
+    skll[skll > 1] = 1 / skll[skll > 1]
+    skll = (1 - skll).abs()
+    #skll = skll / skll.max()
+
+    cov = usedf.loc[minuse:, 'rmswg-spread'].astype(float)
+    cov = (0.68 - cov).abs()
+    # cov = cov/cov.max()
+
+    maen = usedf.loc[minuse:, 'mae'].astype(float)/usedf.loc[minuse:, 'mae'].astype(float).max()
+
+    mape = usedf.loc[minuse:, 'mape'].astype(float)
+
+    alledis = np.sqrt(skll**2 + mape**2 + cov**2)
+
+    #alledis = usedf.loc[minuse:, 'rmswg-spread'].astype(float) + usedf.loc[minuse:, 'maxerror'].astype(float) / usedf.loc[minuse:, 'maxerror'].astype(float).max()
+    allid = alledis.idxmin()
+    return usedf.loc[allid, 'use']
+
+    #print('%s: %2d, %.2f' % (glid, len(usedf.loc[allid, 'use']), alledis.min()))
+
+    #return usedf.loc[allid, 'use']
+
+    edismx = usedf.loc[minuse:, 'edisp'].astype(float).idxmin()
+    return usedf.loc[edismx, 'use']
+
+    useindex = usedf.loc[minuse:, :].index
+
+    mincov = min(0.7, usedf.loc[useindex, 'coverage'].max())
+
+    useindex = usedf.loc[useindex, :].loc[usedf['coverage']>=mincov].index
+
+    rmsp = usedf.loc[useindex, 'rmswg-spread'].astype(float)
+    rmsp[rmsp > 1] = 1 / rmsp[rmsp > 1]
+
+    id1 = rmsp.idxmax()
+
+    return usedf.loc[id1, 'use']
+
+
+def mape_coverage(df, use, obs, normalised=False):
+    mape = pd.Series()
+    for col, val in df.iteritems():
+        # don't use anything twice
+        if col in use:
+            continue
+        ens = df.loc[:, use + [col]].mean(axis=1)
+
+        mape[col] = mean_abs_percentage(pd.concat([obs, ens], axis=1), normalised=False)[0]
+
+    if normalised:
+        return mape / mape.max()
+    else:
+        return mape
+
+
+def mean_abs_percentage(_df, normalised=False):
+
+    df = deepcopy(_df)
+    # no zero allowed
+    df.loc[df['obs'] == 0, 'obs'] = np.nan
+
+    maeall = df.loc[:, df.columns != 'obs'].sub(df.loc[:, 'obs'], axis=0)
+    maeall = maeall.divide(df.loc[:, 'obs'],axis=0)
+    maeall = maeall.dropna().abs().mean()
+
+    return maeall
+
+
+def optimize_skill(_runs, obs, glid, minuse=5):
+    runs = deepcopy(_runs)
+
+    # list which indices to use
+    maestart = mae_weighted(pd.concat([obs, runs], axis=1), weighted=True).sort_values()
+
+    use = maestart.index[:minuse].to_list()
+    #use = [maestart.index[0]]
+
+    while True:
+
+        ens = runs.loc[:, use].mean(axis=1)
+
+        mae = mae_weighted(pd.concat([obs, ens], axis=1), normalised=False, weighted=True)[0]
+        sprd = np.sqrt(runs.loc[:, use].var(axis=1).mean())
+
+        skll = mae / sprd
+        skll = 1 / skll if skll > 1 else skll
+
+        cov = calc_coverage_2(runs, use, obs)
+
+        print('%s: %2d, %.2f, %.2f, %.2f' % (glid, len(use), mae, skll, cov))
+
+        if (skll > 0.90) and (len(use) >= 5):
+            return use
+
+        # Add a run:
+        all_mae = mae_coverage_2(runs, use, obs, normalised=False, weighted=True)
+        all_sprd = std_coverage(runs, use, normalised=False)
+
+        # skill
+        all_skll = all_mae / all_sprd
+        # normalise all values to smaller 1
+        all_skll[all_skll > 1] = 1 / all_skll[all_skll > 1]
+        # increase skill by at least 2%
+        thresh1 = min(skll + 0.02, 0.9)
+
+        # coverage
+        #all_cov = coverage_loop(runs, use, obs, normalised=False)
+        # coverage should be > 0.6 or at least higher than before
+        #thresh2 = min(cov + 0.02, 0.6)
+
+        # filter
+        optim = all_mae.copy()
+        optim[all_skll < thresh1] = np.nan
+        #optim[all_cov < thresh2] = np.nan
+
+        minmaeidx = optim.idxmin()
+
+        if pd.isna(minmaeidx):
+            if len(use) < minuse:
+                #minmaeidx = all_mae.idxmin()
+                minmaeidx = all_skll.idxmax()
+                # we run out of good members before we hit maximum skill
+            else:
+                return use
+
+        if len(use) == 30:
+            return use
+
+        # if we are here: add run and go again
+        use.append(minmaeidx)
+
+
+
+def optimize_skill2(_runs, obs, glid, minuse=5):
+    runs = deepcopy(_runs)
+
+    # list which indices to use
+    maestart = mae_weighted(pd.concat([obs, runs], axis=1), weighted=True).sort_values()
+
+    #use = maestart.index[:minuse].to_list()
+    use = [maestart.index[0]]
+
+    maebest = maestart.iloc[0]
+
+
+    while True:
+
+        ens = runs.loc[:, use].mean(axis=1)
+
+        mae = mae_weighted(pd.concat([obs, ens], axis=1), normalised=False, weighted=True)[0]
+        sprd = np.sqrt(runs.loc[:, use].var(axis=1).mean())
+
+        skll = mae / sprd
+        skll = 1 / skll if skll > 1 else skll
+
+        cov = calc_coverage_2(runs, use, obs)
+
+        print('%s: %2d, %.2f, %.2f, %.2f' % (glid, len(use), mae, skll, cov))
+
+        if (skll > 0.9) and (cov > 0.5) and (len(use) >= 5):
+            return use
+
+        # Add a run:
+        all_mae = mae_coverage_2(runs, use, obs, normalised=False, weighted=True)
+        all_sprd = std_coverage(runs, use, normalised=False)
+
+        # skill
+        all_skll = all_mae / all_sprd
+        # normalise all values to smaller 1
+        all_skll[all_skll > 1] = 1 / all_skll[all_skll > 1]
+        # increase skill by at least 2%
+        thresh1 = min(skll + 0.02, 0.9)
+        all_skll[all_skll < thresh1] = np.nan
+
+        # coverage
+        all_cov = coverage_loop(runs, use, obs, normalised=False)
+        # coverage should be > 0.6 or at least higher than before
+        thresh2 = min(cov + 0.02, 0.5)
+        all_cov[all_cov < thresh2] = np.nan
+
+        all_mae = all_mae / all_mae.max()
+        all_skll = (1-all_skll).abs()
+        all_cov = (1-all_cov).abs()
+
+        edis = np.sqrt((all_mae - all_mae.min()) ** 2 +
+                       (all_cov - all_cov.min()) ** 2 +
+                       (all_skll - all_skll.min()) ** 2)
+
+        #edis = all_scale + all_cov + all_skll
+
+        minmaeidx = edis.idxmin()
+
+        if pd.isna(minmaeidx):
+            if len(use) < minuse:
+                #if all_mae.idxmin() != all_scale.idxmin():
+                #    print('check')
+                minmaeidx = all_mae.idxmin()
+                # we run out of good members before we hit maximum skill
+            else:
+                return use
+
+        # if we are here: add run and go again
+        use.append(minmaeidx)
+
+
+def optimize_cov(_runs, obs, glid, minuse=5):
+    runs = deepcopy(_runs)
+
+    # list which indices to use
+    maestart = mae_weighted(pd.concat([obs, runs], axis=1), weighted=True).sort_values()
+
+    #use = maestart.index[:minuse].to_list()
+    use = [maestart.index[0]]
+
+    maxcov = 0
+
+    while True:
+
+        ens = runs.loc[:, use].mean(axis=1)
+
+        mae = mae_weighted(pd.concat([obs, ens], axis=1), normalised=False, weighted=True)[0]
+
+        cov = calc_coverage_2(runs, use, obs)
+
+        if (cov > maxcov) and (len(use) >= minuse):
+            maxcov = cov
+            maxcovuse = use.copy()
+
+        print('%s: %2d, %.2f, %.2f' % (glid, len(use), mae, cov))
+
+        if (cov > 0.68) and (len(use) >= minuse):
+            return use
+
+        # Add a run:
+        all_mae = mae_coverage_2(runs, use, obs, normalised=False, weighted=True)
+
+        # coverage
+        all_cov = coverage_loop(runs, use, obs, normalised=False)
+        # coverage should be > 0.6 or at least higher than before
+        thresh2 = min(cov + 0.02, 0.6)
+
+        # filter
+        optim = all_mae.copy()
+        optim[all_cov < thresh2] = np.nan
+
+        minmaeidx = optim.idxmin()
+
+        if pd.isna(minmaeidx) or (optim.min() > mae):
+            if (len(use) < minuse) or (cov < 0.68):
+                minmaeidx = all_mae.idxmin()
+                # we run out of good members before we hit maximum skill
+            else:
+                return use
+
+        # if we are here: add run and go again
+        use.append(minmaeidx)
+
+        if len(use) == 30:
+            # that is enough
+            return maxcovuse
+
+
+
+def optimize_all(_runs, obs, glid, minuse=5):
+    runs = deepcopy(_runs)
+
+    # list which indices to use
+    maestart = mae_weighted(pd.concat([obs, runs], axis=1), weighted=True).sort_values()
+
+    #use = maestart.index[:minuse].to_list()
+    use = [maestart.index[0]]
+
+    while True:
+        ens = runs.loc[:, use].mean(axis=1)
+        mae = mae_weighted(pd.concat([obs, ens], axis=1), normalised=False, weighted=True)[0]
+        sprd = np.sqrt(runs.loc[:, use].var(axis=1).mean())
+        skll = mae / sprd
+        skll = 1 / skll if skll > 1 else skll
+        cov = calc_coverage_2(runs, use, obs)
+
+        print('%s: %2d, MAE: %.2f, SKL: %.2f, COV: %.2f' % (
+        glid, len(use), mae, skll, cov))
+        # Add a run:
+        all_mae = mae_coverage_2(runs, use, obs, normalised=False, weighted=True)
+        if all_mae.min() < mae:
+            use.append(all_mae.idxmin())
+        else:
+            #return use
+            break
+
+    # improve coverage
+    while True:
+        ens = runs.loc[:, use].mean(axis=1)
+        mae = mae_weighted(pd.concat([obs, ens], axis=1), normalised=False,
+                           weighted=True)[0]
+
+        sprd = np.sqrt(runs.loc[:, use].var(axis=1).mean())
+        skll = mae / sprd
+        skll = 1 / skll if skll > 1 else skll
+
+        cov = calc_coverage_2(runs, use, obs)
+
+        print('%s: %2d, MAE: %.2f, SKL: %.2f, COV: %.2f' % (glid, len(use), mae, skll, cov))
+
+        if (cov > 0.6) and (cov < 0.9) and (len(use) >= 5):
+            return use
+
+        # Add a run:
+        all_mae = mae_coverage_2(runs, use, obs, normalised=False, weighted=True)
+
+        # coverage
+        all_cov = coverage_loop(runs, use, obs, normalised=False)
+        # coverage should be > 0.6 or at least higher than before
+
+        if (all_cov == 1).all() and (len(use)>=5):
+            #nothing we can do
+            return use
+
+        optim = all_mae.copy()
+
+        if cov < 0.6:
+            optim[all_cov < cov+0.02] = np.nan
+        elif cov > 0.9:
+            optim[all_cov > cov - 0.02] = np.nan
+
+
+        minmaeidx = optim.idxmin()
+
+        if pd.isna(minmaeidx):
+            minmaeidx = all_mae.idxmin()
+
+        # if we are here: add run and go again
+        use.append(minmaeidx)
+
+
+def optimize_all2(_runs, obs, glid, minuse=5):
+    runs = deepcopy(_runs)
+
+    # list which indices to use
+    mae_single = mae_weighted(pd.concat([obs, runs], axis=1), weighted=True).sort_values()
+
+    #use = maestart.index[:minuse].to_list()
+    use = [mae_single.index[0]]
+
+
+    while True:
+
+        ens = runs.loc[:, use].mean(axis=1)
+
+        mae = mae_weighted(pd.concat([obs, ens], axis=1), normalised=False, weighted=True)[0]
+        sprd = np.sqrt(runs.loc[:, use].var(axis=1).mean())
+
+        skll = mae / sprd
+        skll = 1 / skll if skll > 1 else skll
+
+        cov = calc_coverage_2(runs, use, obs)
+
+        print('%s: %2d, %.2f, %.2f, %.2f' % (glid, len(use), mae, skll, cov))
+
+        if (skll > 0.9) and (cov > 0.6) and (len(use) >= 5):
+            return use
+
+        # Add a run:
+        all_mae = mae_coverage_2(runs, use, obs, normalised=False, weighted=True)
+        all_sprd = std_coverage(runs, use, normalised=False)
+
+        # skill
+        all_skll = all_mae / all_sprd
+        # normalise all values to smaller 1
+        all_skll[all_skll > 1] = 1 / all_skll[all_skll > 1]
+        # increase skill by at least 2%
+        thresh1 = min(skll + 0.02, 0.9)
+        all_skll[all_skll < thresh1] = np.nan
+
+        # coverage
+        all_cov = coverage_loop(runs, use, obs, normalised=False)
+        # coverage should be > 0.6 or at least higher than before
+        thresh2 = min(cov + 0.02, 0.6)
+        all_cov[all_cov < thresh2] = np.nan
+
+        all_mae = all_mae / all_mae.max()
+        sing_mae = mae_single.loc[all_mae.index] / mae_single.loc[all_mae.index].max()
+        all_skll = (1-all_skll).abs()
+        all_cov = (1-all_cov).abs()
+
+        edis = np.sqrt((all_mae - all_mae.min()) ** 2 +
+                       (sing_mae - sing_mae.min()) ** 2 +
+                       (all_cov - all_cov.min()) ** 2 +
+                       (all_skll - all_skll.min()) ** 2)
+
+        #edis = all_scale + all_cov + all_skll
+
+        minmaeidx = edis.idxmin()
+
+        if pd.isna(minmaeidx):
+            if len(use) < minuse:
+                #if all_mae.idxmin() != all_scale.idxmin():
+                #    print('check')
+                #minmaeidx = all_mae.idxmin()
+                return use
+                # we run out of good members before we hit maximum skill
+            else:
+                return use
+
+        # if we are here: add run and go again
+        use.append(minmaeidx)
+
+
+
+def optimize_cov2(_runs, obs, glid, minuse=5):
+    runs = deepcopy(_runs)
+
+    # list which indices to use
+    maestart = mae_weighted(pd.concat([obs, runs], axis=1), weighted=True).sort_values()
+
+    #use = maestart.index[:minuse].to_list()
+    use = [maestart.index[0]]
+
+    maxcov = 0
+
+    while True:
+
+        ens = runs.loc[:, use].mean(axis=1)
+
+        mae = mae_weighted(pd.concat([obs, ens], axis=1), normalised=False, weighted=True)[0]
+
+        cov = calc_coverage_2(runs, use, obs)
+
+        print('%s: %2d, %.2f, %.4f' % (glid, len(use), mae, cov))
+
+        #if (cov > 0.68) and (len(use) >= minuse):
+        #    return use
+
+        # Add a run:
+        all_mae = mae_coverage_2(runs, use, obs, normalised=False, weighted=True)
+
+        # coverage
+        all_cov = coverage_loop(runs, use, obs, normalised=False)
+        # coverage should be > 0.6 or at least higher than before
+        #thresh1 = max(cov - 0.02, 0.9)
+        #thresh1 = 0.9
+        #thresh2 = min(cov + 0.01, 0.6)
+        thresh2 = min(cov, 0.6)
+
+        # filter
+        optim = all_mae.copy()
+        #optim[all_cov > thresh1] = np.nan
+        optim[all_cov <= thresh2] = np.nan
+
+        minmaeidx = optim.idxmin()
+
+        if optim.min() < mae:
+            use.append(minmaeidx)
+        elif optim.min() > mae:
+            if (len(use) < minuse) or (cov < 0.6):
+                use.append(minmaeidx)
+            else:
+                return use
+        elif pd.isna(minmaeidx):
+            if (len(use) < minuse):
+                raise ValueError('this is not documented in the paper')
+            elif (cov < 0.6):
+                print('enough members, did not reach cov=0.6, but thats ok')
+                return use
+            else:
+                print('No increasing members, but already enough and cov>0.6, we are good to go.')
+                return use
+
+        if len(use) == 30:
+            # that is enough and should not happend anywys
+            raise ValueError('that should not happen')

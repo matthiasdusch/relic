@@ -150,8 +150,10 @@ def systematic_spinup(gdir, meta, glena=None):
     print('first guess: %.2f' % fg)
 
     # mass balance model
+    log.warning('DeprecationWarning: If downloadlink is updated to gdirs_v1.2, remove filename kwarg')
     mb = MultipleFlowlineMassBalance(gdir, fls=fls,
-                                     mb_model_class=ConstantMassBalance)
+                                     mb_model_class=ConstantMassBalance,
+                                     filename='climate_monthly')
 
     # values to test systematicall
     totest = np.geomspace(fg, fg*3, 4)

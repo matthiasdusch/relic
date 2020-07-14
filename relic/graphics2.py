@@ -131,28 +131,38 @@ def paramplots(df, glid, pout, y_len=None):
     # take care of merged glaciers
     rgi_id = glid.split('_')[0]
 
+    fig1, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=[25, 5])
+
+    # get MAEs
+    maes = mae_weighted(df, normalised=True).sort_values().iloc[:100]
+
     allvars = ['prcp_scaling_factor', 'mbbias', 'glena_factor']
-    for var in allvars:
+
+    for var, ax in zip(allvars, [ax1, ax2, ax3]):
         notvars = allvars.copy()
         notvars.remove(var)
 
-        fig1, ax1 = plt.subplots(figsize=[17, 9])
+        #paretodict = pareto3({glid: df})
+        #papar = ast.literal_eval('{' + paretodict[glid][0] + '}')
 
-        # get MAEs
-        maes = mae_weighted(df, normalised=True).sort_values().iloc[:130]
+        # papar = {'glena_factor': 1.0, 'mbbias': -200, 'prcp_scaling_factor': 3.5}
 
+        # lets use min MAE here
+        # papar = ast.literal_eval('{' + maes.index[0] + '}')
+        # lets use OGGM HISTALP default
+        papar = {'glena_factor': 1.0, 'mbbias': 0, 'prcp_scaling_factor': 1.75}
 
-        # plot observations
-        df.loc[:, 'obs'].rolling(1, min_periods=1).mean(). \
-            plot(ax=ax1, color='k', marker='o', label='Observed length change',
-                 markersize=10)
-
-        paretodict = pareto3({glid: df})
-        papar = ast.literal_eval('{' + paretodict[glid][0] + '}')
-
-        nolbl = df.loc[:, paretodict[glid]].rolling(y_len, center=True).mean().copy()
+        """
+        # uncomment for 100 grey lines
+        nolbl = df.loc[:, maes.index].rolling(y_len, center=True).mean().copy()
         nolbl.columns = ['' for i in range(len(nolbl.columns))]
-        nolbl.plot(ax=ax1, linewidth=0.5, color='0.8')
+        nolbl.plot(ax=ax, linewidth=0.5, color='0.8')
+
+        # plot 1 for label
+        df.loc[:, maes.index[0]].rolling(y_len, center=True). \
+            mean().plot(ax=ax, linewidth=0.5, color='0.8',
+                        label='100 smallest MAE runs')
+        """
 
         # store specific runs
         dfvar = pd.DataFrame([], index=df.index)
@@ -166,7 +176,7 @@ def paramplots(df, glid, pout, y_len=None):
                     (para['mbbias'] == 0) and
                     (para['glena_factor'] == 1)):
                 df.loc[:, run].rolling(y_len, center=True). \
-                    mean().plot(ax=ax1, linewidth=2, color='k',
+                    mean().plot(ax=ax, linewidth=6, color='k',
                                 label='OGGM default parameters')
 
             if ((np.isclose(para[notvars[0]],
@@ -175,6 +185,10 @@ def paramplots(df, glid, pout, y_len=None):
                             papar[notvars[1]], atol=0.01))):
 
                 dfvar.loc[:, para[var]] = df.loc[:, run]
+
+        df.loc[:, maes.index[0]].rolling(y_len, center=True). \
+            mean().plot(ax=ax, linewidth=6, color='C2',
+                        label='minimal MAE run')
 
         if var == 'prcp_scaling_factor':
             colors = ["#4B0055","#471D67","#3C3777","#1E4D85","#006290","#007796","#008A98","#009B95","#00AC8E","#00BA82","#25C771","#73D25B","#A6DA42","#D4E02D","#FDE333"]
@@ -185,36 +199,45 @@ def paramplots(df, glid, pout, y_len=None):
             colors = ["#001889","#67008E","#9C008E","#C32D80","#DD5E61","#EC8F21","#F1C500"]
             colors.reverse()
         elif var == 'mbbias':
-            colors = ["#00308D","#064D9B","#436CB7","#698CD6","#8DADF8","#B1CFFF","#FFD8D9","#FFB5B5","#F59393","#D17171","#AE5050","#8C2F2F","#6C0203"]
-            lbl = 'MB bias: '
+            #colors = ["#00308D","#064D9B","#436CB7","#698CD6","#8DADF8","#B1CFFF","#FFD8D9","#FFB5B5","#F59393","#D17171","#AE5050","#8C2F2F","#6C0203"]
+            colors = ["#023FA5","#1B44A4","#2B4AA4","#3852A5","#465BA7","#5767AC","#737EB5","#B66C7B","#A84E63","#A03D57","#9A304E","#962346","#921740"]#,"#8E063B"
+            lbl = 'MB bias [mm w.e.]: '
 
         dfvar = dfvar.sort_index(axis=1)
         col = dfvar.columns.astype('str').to_list()
         col = [lbl + c for c in col]
         col[1:-1] = ['' for i in np.arange(1, len(dfvar.columns)-1)]
         dfvar.columns = col
-        dfvar.rolling(y_len, center=True).mean().plot(ax=ax1, color=colors,
-                                                      linewidth=4)
+        dfvar.rolling(y_len, center=True).mean().plot(ax=ax, color=colors,
+                                                      linewidth=2)
 
-        df.loc[:, paretodict[glid][0]].rolling(y_len, center=True). \
-            mean().plot(ax=ax1, linewidth=6, color='C2',
-                        label='finally chosen run')
+        # plot observations
+        df.loc[:, 'obs'].rolling(1, min_periods=1).mean(). \
+            plot(ax=ax, color='k', style='.',
+                 marker='o', label='Observed length change',
+                 markersize=6)
 
-        name = GLCDICT.get(rgi_id)[2]
+        # ax.set_title('%s' % name, fontsize=30)
+        # ax.set_ylabel('relative length change [m]', fontsize=26)
+        ax.set_xlabel('Year', fontsize=18)
+        ax.set_xlim([1850, 2020])
+        ax.set_ylim([-4000, 1000])
+        ax.tick_params(axis='both', which='major', labelsize=16)
+        if not ax == ax1:
+            ax.set_yticklabels([])
+        ax.grid(True)
 
-        ax1.set_title('%s' % name, fontsize=30)
-        ax1.set_ylabel('relative length change [m]', fontsize=26)
-        ax1.set_xlabel('Year', fontsize=26)
-        ax1.set_xlim([1850, 2020])
-        ax1.set_ylim([-2500, 500])
-        ax1.tick_params(axis='both', which='major', labelsize=22)
-        ax1.grid(True)
+        ax.legend(fontsize=12, loc=3)
 
-        ax1.legend(fontsize=20, loc=3)
+    #ax1.tick_params(axis='both', which='major', labelsize=16)
+    ax1.set_ylabel('relative length change [m]', fontsize=18)
 
-        fig1.tight_layout()
-        fn1 = os.path.join(pout, 'dummy_%s_%s.png' % (glid, var))
-        fig1.savefig(fn1)
+    name = GLCDICT.get(rgi_id)[2]
+    fig1.suptitle('%s' % name, fontsize=30)
+    fig1.tight_layout(rect=[0, 0.0, 0.99, 0.94])
+    fn1 = os.path.join(pout, '%s.pdf' % glid)
+    fn1 = os.path.join(pout, '%s.png' % glid)
+    fig1.savefig(fn1)
 
 
 def gpr(df, glid, pout, y_len=5):
@@ -359,6 +382,25 @@ def quick_plot(glcdict, pout, y_len=5):
         # take care of merged glaciers
         rgi_id = glid.split('_')[0]
 
+        """
+        
+        if (rgi_id != 'RGI60-11.03646') and (rgi_id != 'RGI60-11.00106') and (
+                rgi_id != 'RGI60-11.00897') and (
+                rgi_id != 'RGI60-11.01328') and (
+                rgi_id != 'RGI60-11.03638') and (
+                rgi_id != 'RGI60-11.03643') and (
+                rgi_id != 'RGI60-11.00116') and (
+                rgi_id != 'RGI60-11.00687') and (
+                rgi_id != 'RGI60-11.00746') and (
+                rgi_id != 'RGI60-11.01450') and (rgi_id != 'RGI60-11.01946'):
+            #if (rgi_id != 'RGI60-11.03638') and (rgi_id != 'RGI60-11.03643') and (rgi_id != 'RGI60-11.01346') and (rgi_id != 'RGI60-11.02740') and (rgi_id != 'RGI60-11.02822') and (rgi_id != 'RGI60-11.02051'):
+            continue
+        """
+        #if (rgi_id != 'RGI60-11.03646') and (rgi_id != 'RGI60-11.02755'):
+        #    continue
+
+
+
         fig1, ax1 = plt.subplots(figsize=[21, 7])
 
         # plot observations
@@ -382,6 +424,7 @@ def quick_plot(glcdict, pout, y_len=5):
                 df.loc[:, run].rolling(y_len, center=True). \
                     mean().plot(ax=ax1, linewidth=2, color='k',
                                 label='OGGM default parameters')
+                oggmdefault = run
 
         #from relic.postprocessing import detrend_series
         #obs_std = detrend_series(df.loc[:, 'obs']).std()
@@ -391,7 +434,6 @@ def quick_plot(glcdict, pout, y_len=5):
         #ax1.fill_between(dfint.index, dfint - obs_std, dfint + obs_std, color='0.65')
 
         # get MAEs
-        maes = mae_weighted(df, normalised=False).sort_values()
         # get stdquot
         #stdquot = std_quotient(df, normalised=True).sort_values().iloc[:130]
 
@@ -429,13 +471,19 @@ def quick_plot(glcdict, pout, y_len=5):
 
         #pd5dt = pdic5dt[glid].sort_values()
 
+        maes = mae_weighted(df, normalised=False).sort_values()
         idx2plot = maes.index[:q10]
+
+        #from relic.postprocessing import maxerror
+        #maxes = maxerror(df, normalised=False).sort_values()
+        #idx2plot = maxes.index
+
         idx3 = maes.index[:q3]
         idx250 = maes.index[:250]
         #idx2plot2 = pdic5a[glid].sort_values().index[:10]
         #idx2plot3 = pdic5b[glid].sort_values().index[:10]
 
-        from relic.postprocessing import fit_one_std, best_powerset, fit_one_std_2f, maxerror_smaller_than, maxerror, fit_one_std_1, fit_one_std_2g, fit_one_std_2h
+        from relic.postprocessing import fit_one_std, best_powerset, fit_one_std_2f, maxerror_smaller_than, maxerror, fit_one_std_1, fit_one_std_2g, fit_one_std_2h, pareto_nach_rye, pareto_nach_rye2
 
         # maer = maxerror(df).sort_values()
         # idx2plot3 = fit_one_std(df, pdic[glid].sort_values().index[:100], glid)
@@ -450,7 +498,7 @@ def quick_plot(glcdict, pout, y_len=5):
 
         # idx2plot2, cov2 = fit_one_std_2f(df.loc[:, df.columns != 'obs'], df.loc[:, 'obs'], glid, minuse=5, maxuse=20)
         # idx2plot2, cov2 = fit_one_std_2f(df.loc[:, idx2plot], df.loc[:, 'obs'], glid, minuse=5, maxuse=8)
-        # idx2plot2, cov2 = fit_one_std_2g(df.loc[:, idx2plot[:50]], df.loc[:, 'obs'], glid, minuse=5, maxuse=10)
+        # idx2plot2, cov2 = fit_one_std_2g(df.loc[:, idx2plot[:200]], df.loc[:, 'obs'], glid, minuse=5, maxuse=10)
         # idx2plot2, cov2 = fit_one_std_2g(df.loc[:, df.columns != 'obs'], df.loc[:, 'obs'], glid, minuse=5, maxuse=20)
 
         # if glid not in ['RGI60-11.00746', 'RGI60-11.00887', 'RGI60-11.01270', 'RGI60-11.01946']:
@@ -460,7 +508,30 @@ def quick_plot(glcdict, pout, y_len=5):
         #    continue
         # idx2plot2, cov = fit_one_std_2h(df.loc[:, idx2plot], df.loc[:, 'obs'], glid, minuse=5, maxuse=20)
 
-        idx2plot2, cov = fit_one_std_2g(df.loc[:, idx2plot], df.loc[:, 'obs'], glid, minuse=5, maxuse=20)
+        # idx2plot2, cov = fit_one_std_2g(df.loc[:, idx2plot], df.loc[:, 'obs'], glid, minuse=5, maxuse=20)
+
+
+        # idx2plot2 = pareto_nach_rye2(df, glid)
+        # idx2plot2 = pareto_nach_rye(df, glid)
+
+        #from relic.postprocessing import montec
+        #idx2plot2 = montec(df, glid)
+        #useall.append(idx2plot2)
+
+        from relic.postprocessing import fit_cov_and_skill
+        # idx2plot2 = fit_cov_and_skill(df.loc[:, df.columns != 'obs'], df.loc[:, 'obs'], glid, minuse=5, maxuse=20)
+        idx2plot2 = fit_cov_and_skill(df.loc[:, idx2plot], df.loc[:, 'obs'], glid, minuse=5, maxuse=30)
+
+
+        #me = df.loc[:, df.columns != 'obs'].sub(df.loc[:, 'obs'], axis=0). \
+        #    dropna().mean()
+        #mepl = me[me>0].sort_values().index[:25]
+        #memi = me[me<0].sort_values(ascending=False).index[:25]
+        #idx2plot2 = mepl.append(memi)
+
+        from relic.postprocessing import r2
+        #idx2plot2 = r2(df, normalised=True, detrend=True).sort_values().index[:50]
+
         # idx2plot2, cov = fit_one_std_2g(df.loc[:, df.columns != 'obs'], df.loc[:, 'obs'], glid, minuse=5, maxuse=30)
 
         # idx2plot3, cov3 = fit_one_std_2b(df.loc[:, df.columns != 'obs'], df.loc[:, 'obs'], glid, cov=False, detrend=True)
@@ -484,18 +555,25 @@ def quick_plot(glcdict, pout, y_len=5):
 
         ensstdmean = df.loc[:, idx2plot2].std(axis=1).rolling(y_len, center=True).mean()
 
+        # coverage
+        from relic.postprocessing import calc_coverage_2
+        cov = calc_coverage_2(df, idx2plot2, df['obs'])
         # ensstd = ensmean.std()
         # ensstddt = detrend_series(ensmean).std()
 
-        ax1.fill_between(ensmeanmean.index, ensmeanmean - ensstdmean,
-                         ensmeanmean + ensstdmean, color='C0', alpha=0.6)
+        #ax1.fill_between(ensmeanmean.index, ensmeanmean - ensstdmean,
+        #                 ensmeanmean + ensstdmean, color='C0', alpha=0.6)
+        nolbl = df.loc[:, idx2plot2].rolling(y_len, center=True).mean().copy()
+        nolbl.columns = ['' for i in range(len(nolbl.columns))]
+        nolbl.plot(ax=ax1, linewidth=0.8, color='C0')
+
         ax1.plot(0, 0, color='C0', linewidth=10, label='ensemble mean +/- 1 std')
+
+
         #ax1.fill_between(ensmean.index, ensmean.values - ensstddt,
         #                 ensmean.values + ensstddt, color='C0', alpha=0.8)
 
         # plot ens members
-        #df.loc[:, idx2plot2].rolling(y_len, center=True).mean().\
-        #    plot(ax=ax1, linewidth=0.8, color='C0')
 
         ensmeanmean.plot(ax=ax1, linewidth=4.0, color='C1', label='ensemble mean')
         #ensmed.plot(ax=ax1, linewidth=1.5, color='C3', label='ensemble median')
@@ -542,6 +620,180 @@ def quick_plot(glcdict, pout, y_len=5):
         fig1.tight_layout()
         fn1 = os.path.join(pout, 'histalp_%s.png' % glid)
         fig1.savefig(fn1)
+
+        used = {}
+        used['oggmdefault'] = oggmdefault
+        used['minmae'] = idx2plot[0]
+        used['ensemble'] = idx2plot2
+
+        pickle.dump(used, open(os.path.join(pout, 'runs_%s.p' % glid), 'wb'))
+
+
+def quick_plot_and_hist(glcdict, pout, y_len=5):
+
+    for glid, df in glcdict.items():
+
+        # recalc for 1980
+        ix1980 = df.dropna().index[0]
+        df.loc[:, df.columns != 'obs'] += df.loc[ix1980, 'obs']
+
+        # take care of merged glaciers
+        rgi_id = glid.split('_')[0]
+
+        #if rgi_id != 'RGI60-11.03643':
+        #    continue
+
+        #if (rgi_id != 'RGI60-11.01450') and (rgi_id != 'RGI60-11.02051') and (rgi_id != 'RGI60-11.01270') and (rgi_id != 'RGI60-11.03643') and (rgi_id != 'RGI60-11.00897'):
+        #    #if (rgi_id != 'RGI60-11.02755') and (rgi_id != 'RGI60-11.03646'):
+        #    continue
+
+        fig = plt.figure(figsize=[23, 9])
+
+        from matplotlib.gridspec import GridSpec
+        gs = GridSpec(3, 3)  # 2 rows, 3 columns
+
+        ax1 = fig.add_subplot(gs[0:2, :])  # Second row, span all columns
+        ax2 = fig.add_subplot(gs[2, 0])  # First row, first column
+        ax3 = fig.add_subplot(gs[2, 1])  # First row, second column
+        ax4 = fig.add_subplot(gs[2, 2])  # First row, third column
+
+
+        df.loc[:, 'obs'].plot(ax=ax1, color='k', marker='o',
+                              label='Observed length change')
+
+        # OGGM standard
+        for run in df.columns:
+            if run == 'obs':
+                continue
+            para = ast.literal_eval('{' + run + '}')
+            if ((np.abs(para['prcp_scaling_factor'] - 1.75) < 0.01) and
+                    (para['mbbias'] == 0) and
+                    (para['glena_factor'] == 1)):
+                df.loc[:, run].rolling(y_len, center=True). \
+                    mean().plot(ax=ax1, linewidth=2, color='k',
+                                label='OGGM default parameters')
+                oggmdefault = run
+
+        q10 = int(df.shape[1] / 10)
+
+        maes = mae_weighted(df, normalised=False).sort_values()
+        idx2plot = maes.index[:q10]
+
+        from relic.postprocessing import optimize_skill, optimize_skill2, optimize_cov, optimize_all, optimize_all2, optimize_cov2
+        #idx2plot2 = fit_cov_and_skill2(df.loc[:, df.columns != 'obs'], df.loc[:, 'obs'], glid, minuse=5, maxuse=25)
+        idx2plot2 = optimize_cov2(df.loc[:, idx2plot], df.loc[:, 'obs'], glid, minuse=5)
+        #idx2plot2 = optimize_cov2(df.loc[:, df.columns != 'obs'], df.loc[:, 'obs'], glid, minuse=5)
+        #
+        # idx2plot2 = maes.index[:20]
+
+        """
+        cov = skll = 0
+        idx2plot2 = [maes.index[0]]
+        n = 1
+        while cov < 0.9:
+            idx2plot2.append(maes.index[n])
+            cov = calc_coverage_2(df, idx2plot2, df['obs'])
+
+            ensmean = df.loc[:, idx2plot2].mean(axis=1)
+            rmse_ens = rmse_weighted(pd.concat([ensmean, df['obs']], axis=1))[0]
+            sprd = np.sqrt(df.loc[:, idx2plot2].var(axis=1).mean())
+            skll = rmse_ens / sprd
+            # normalise to 1
+            skll = 1 / skll if skll > 1 else skll
+
+            n += 1
+            if n == len(maes):
+                break
+        """
+
+        #mer = mean_error_weighted(df, normalised=False)
+        #merp = mer[mer > 0].sort_values()
+        #merm = mer[mer < 0].sort_values(ascending=False)
+        #idx2plot2 = merm[:15].index.to_list() + merp[:15].index.to_list()
+
+        from relic.postprocessing import calc_coverage_2, rmse_weighted
+
+        ensmean = df.loc[:, idx2plot2].mean(axis=1)
+        ensmeanmean = ensmean.rolling(y_len, center=True).mean()
+
+        # coverage
+        cov = calc_coverage_2(df, idx2plot2, df['obs'])
+        nolbl = df.loc[:, idx2plot2].rolling(y_len, center=True).mean().copy()
+        nolbl.columns = ['' for i in range(len(nolbl.columns))]
+        nolbl.plot(ax=ax1, linewidth=0.8, color='C0')
+
+        ax1.plot(0, 0, color='C0', linewidth=10,
+                 label='ensemble mean +/- 1 std')
+
+        # plot ens members
+        ensmeanmean.plot(ax=ax1, linewidth=4.0, color='C1',
+                         label='ensemble mean')
+
+        # reference run (basically min mae)
+        df.loc[:, idx2plot[0]].rolling(y_len, center=True).mean(). \
+            plot(ax=ax1, linewidth=3, color='C4')
+
+        name = GLCDICT.get(rgi_id)[2]
+
+        mae_ens = mae_weighted(pd.concat([ensmean, df['obs']], axis=1))[0]
+        #rmse_ens = rmse_weighted(pd.concat([ensmean, df['obs']], axis=1))[0]
+        mae_best = maes[0]
+        #rmse_best = rmse_weighted(df, normalised=False).sort_values()[0]
+
+        sprd = np.sqrt(df.loc[:, idx2plot2].var(axis=1).mean())
+
+        rmspread = mae_ens / sprd
+
+        ax1.set_title('%s' % name, fontsize=28)
+        ax1.text(2030, -2500, '%d ensemble members\n'
+                              'coverage = %.2f\n'
+                              'skill (MAE / SPREAD) = %.2f\n'
+                              'MAE enselbe = %.2f\n'
+                              'MAE best = %.2f' %
+                 (len(idx2plot2), cov, rmspread, mae_ens,
+                  mae_best), fontsize=18)
+        ax1.set_ylabel('relative length change [m]', fontsize=26)
+        ax1.set_xlabel('Year', fontsize=26)
+        ax1.set_xlim([1850, 2020])
+        ax1.set_ylim([-3500, 1000])
+        ax1.tick_params(axis='both', which='major', labelsize=22)
+        ax1.grid(True)
+
+        ax1.legend(bbox_to_anchor=(1.04, 1), loc='upper left', fontsize=14)
+
+        # histograms
+        from collections import defaultdict
+        glena = defaultdict(int)
+        mbbias = defaultdict(int)
+        prcpsf = defaultdict(int)
+
+        for run in idx2plot2:
+            para = ast.literal_eval('{' + run + '}')
+            prcpsf[para['prcp_scaling_factor']] += 1
+            glena[para['glena_factor']] += 1
+            mbbias[para['mbbias']] += 1
+
+        ax2.bar(list(glena.keys()), glena.values(), width=0.4)
+        ax2.set_xlabel('Glen A factor')
+        ax2.set_ylabel('# used in ensemble')
+        ax2.set_xlim([0.5, 4.5])
+
+        ax3.bar(list(prcpsf.keys()), prcpsf.values(), width=0.2)
+        ax3.set_xlabel('Prcp SF factor')
+        ax3.set_ylabel('# used in ensemble')
+        ax3.set_xlim([0, 4.5])
+
+        ax4.bar(list(mbbias.keys()), mbbias.values(), width=150)
+        ax4.set_xlabel('MB bias')
+        ax4.set_ylabel('# used in ensemble')
+        ax4.set_xlim([-1600, 1200])
+
+
+        # fig1.subplots_adjust(right=0.7)
+        fig.tight_layout()
+        fn1 = os.path.join(pout, 'histalp_%s.png' % glid)
+        fig.savefig(fn1)
+
 
 
 def quick_crossval(glcdict, glcdict_1980, pout, y_len=5):

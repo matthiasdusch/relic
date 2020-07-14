@@ -7,6 +7,8 @@ from oggm.workflow import execute_entity_task
 from oggm import entity_task
 from oggm.utils import get_ref_mb_glaciers_candidates
 
+from relic import length_observations
+
 
 import logging
 log = logging.getLogger(__name__)
@@ -34,35 +36,35 @@ MERGEDICT = {
 # stores [observation source, source ID, Plotname]
 GLCDICT = {
     'RGI60-11.00106': ['wgms', 566, 'Pasterze', 'Austria'],
-    'RGI60-11.00116': ['wgms', 583, 'Obersulzbach Kees', 'Austria'],
+    'RGI60-11.00116': ['wgms', 583, 'Obersulzbachkees', 'Austria'],
     'RGI60-11.00687': ['wgms', 519, 'Taschachferner', 'Austria'],
     'RGI60-11.00746': ['wgms', 522, 'Gepatschferner', 'Austria'],
-    'RGI60-11.00887': ['wgms', 511, 'Gurgler', 'Austria'],
+    'RGI60-11.00887': ['wgms', 511, 'Gurgler Ferner', 'Austria'],
     'RGI60-11.00897': ['wgms', 491, 'Hintereisferner (with Kesselwandferner)',
                        'Austria'],
 
     'RGI60-11.01238': ['glamos', 'B43/03', 'Rhonegletscher', 'Switzerland'],
-    'RGI60-11.01270': ['glamos', 'A54l/04', 'Oberer Grindelwald Gletscher',
+    'RGI60-11.01270': ['glamos', 'A54l/04', 'Oberer Grindelwaldgletscher',
                        'Switzerland'],
     'RGI60-11.01328': ['glamos', 'A54g/11', 'Unteraargletscher',
                        'Switzerland'],
     'RGI60-11.01346': ['glamos', 'A54l/19',
-                       'Unterer Grindelwald Gletscher', 'Switzerland'],
+                       'Unterer Grindelwaldgletscher', 'Switzerland'],
     'RGI60-11.01450': ['glamos', 'B36/26',
-                       'Großer Aletsch Gletscher (with Mittelaletsch Gl.)',
+                       'Großer Aletschgletscher (with Mittelaletsch Gl.)',
                        'Switzerland'],
     'RGI60-11.01478': ['glamos', 'B40/07', 'Fieschergletscher', 'Switzerland'],
     'RGI60-11.01698': ['glamos', 'B31/04', 'Langgletscher', 'Switzerland'],
     'RGI60-11.01946': ['glamos', 'E22/03', 'Vadret da Morteratsch',
                        'Switzerland'],
 
-    'RGI60-11.01974': ['wgms', 670, 'Forni', 'Italy'],
+    'RGI60-11.01974': ['wgms', 670, 'Ghiacciaio dei Forni', 'Italy'],
 
     'RGI60-11.02051': ['glamos', 'E23/06',
                        'Vadret da Tschierva (with Roseg)', 'Switzerland'],
     'RGI60-11.02709': ['glamos', 'B72/15',
                        'Glacier du Mont Mine (with Ferpecle)', 'Switzerland'],
-    'RGI60-11.02245': ['glamos', 'C83/12', 'Forno', 'Switzerland'],
+    'RGI60-11.02245': ['glamos', 'C83/12', 'Vadrec del Forno', 'Switzerland'],
     'RGI60-11.02630': ['glamos', 'B63/05', 'Glacier de Zinal', 'Switzerland'],
     'RGI60-11.02704': ['glamos', 'B52/29', 'Allalingletscher', 'Switzerland'],
     'RGI60-11.02740': ['glamos', 'B90/02', 'Glacier du Trient', 'Switzerland'],
@@ -83,6 +85,65 @@ GLCDICT = {
 }
 
 ADDITIONAL_REFERENCE_GLACIERS = []
+
+
+def glacier_to_table(outpath):
+
+    df = pd.DataFrame([], index=GLCDICT.keys())
+
+    poldict = {'Switzerland': 'CH',
+               'Austria': 'AT',
+               'Italy': 'IT',
+               'France': 'FR'}
+
+    rgidf = utils.get_rgi_glacier_entities(df.index)
+    meta, _ = length_observations.get_length_observations(df.index)
+
+    for rgi, _ in df.iterrows():
+        name = GLCDICT[rgi][2].split('(')[0]
+        df.loc[rgi, 'name'] = name
+        #df.loc[rgi, 'RGI id'] = rgi
+        df.loc[rgi, 'state'] = poldict[GLCDICT[rgi][3]]
+        df.loc[rgi, 'lat/lon'] = '{:.2f}/{:.2f}'.\
+            format(rgidf.loc[rgidf.RGIId == rgi, 'CenLon'].iloc[0],
+                   rgidf.loc[rgidf.RGIId == rgi, 'CenLat'].iloc[0])
+
+        df.loc[rgi, 'merge'] = 'no'
+        area = rgidf.loc[rgidf.RGIId == rgi, 'Area'].iloc[0]
+
+        if MERGEDICT.get(rgi):
+            df.loc[rgi, 'merge'] = 'yes'
+            tribs = MERGEDICT[rgi][0]
+            tribdf = utils.get_rgi_glacier_entities(tribs)
+            for trib in tribs:
+                area += tribdf.loc[tribdf.RGIId == trib, 'Area'].iloc[0]
+
+        df.loc[rgi, 'area [insert km2]'] = '{:.1f}'.\
+            format(area)
+        df.loc[rgi, '1.obs'] = meta.loc[rgi, 'first']
+        df.loc[rgi, '#obs'] = meta.loc[rgi, 'measurements']
+
+    df.loc[:, '1.obs'] = df.loc[:, '1.obs'].astype(int)
+    df.loc[:, '#obs'] = df.loc[:, '#obs'].astype(int)
+
+    df = df.sort_values('name')
+
+    # ---------------
+    # generate table
+    tbl = df.to_latex(na_rep='--', index=False, longtable=True,
+                      column_format=2 * 'l' + 'r' + 'l' + 3 * 'r')
+    # add title
+    titl = ('\n\\caption{A list of all glaciers used for this study. '
+            '\\emph{merge} indicates if'
+            ' a glacier has additional tributary glaciers merged to it. '
+            '\\emph{area} then does include these tributaries. '
+            '\\emph{1.obs} refers to the first observation after 1850 and'
+            ' the number of observations \\emph{\#obs} is counted until '
+            '2020.}\\\\\n'
+            '\\label{tbl:glaciers}\\\\\n')
+    tbl = tbl.replace('\n', titl, 1)
+    with open(outpath, 'w') as tf:
+        tf.write(tbl)
 
 
 def configure(workdir, glclist, baselineclimate='HISTALP', resetwd=False):

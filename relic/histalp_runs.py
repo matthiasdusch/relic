@@ -255,14 +255,17 @@ def multi_parameter_run(paramdict, gdirs, meta, obs, runid=None):
                 gd2merge = [gd for gd in gdirs if gd.rgi_id in [gid] + merg[0]]
 
                 # actual merge task
+                log.warning('DeprecationWarning: If downloadlink is updated to gdirs_v1.2, remove filename kwarg')
                 gdir_merged = merge_glacier_tasks(gd2merge, gid,
-                                                  buffer=merg[1])
+                                                  buffer=merg[1],
+                                                  filename='climate_monthly')
 
                 # remove the entity glaciers from the simulation list
                 gdirs2sim = [gd for gd in gdirs2sim if
                              gd.rgi_id not in [gid] + merg[0]]
 
                 # uncomment to visually inspect the merged glacier
+                """
                 import matplotlib.pyplot as plt
                 from oggm import graphics
                 import os
@@ -270,7 +273,7 @@ def multi_parameter_run(paramdict, gdirs, meta, obs, runid=None):
                 graphics.plot_centerlines(gdir_merged,
                                           use_model_flowlines=True, ax=ax)
                 f.savefig(os.path.join(cfg.PATHS['working_dir'], gid) + '.png')
-
+                """
                 gdirs_merged.append(gdir_merged)
 
         # add merged glaciers to the left over entity glaciers
