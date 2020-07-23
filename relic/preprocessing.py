@@ -7,7 +7,7 @@ from oggm.workflow import execute_entity_task
 from oggm import entity_task
 from oggm.utils import get_ref_mb_glaciers_candidates
 
-from relic import length_observations
+from relic import length_observations  as lob
 
 
 import logging
@@ -84,6 +84,19 @@ GLCDICT = {
     'RGI60-11.03684': ['wgms', 351, 'Glacier Blanc', 'France']
 }
 
+# wgms id of glacier with reconstructed length data
+WGMS_RR = {
+    'RGI60-11.01238': 473,
+    'RGI60-11.01270': 444,
+    'RGI60-11.01328': 450,
+    'RGI60-11.01346': 443,
+    'RGI60-11.03638': 354,
+    'RGI60-11.03643': 353,
+    'RGI60-11.03646': 355
+}
+
+
+
 ADDITIONAL_REFERENCE_GLACIERS = []
 
 
@@ -97,12 +110,11 @@ def glacier_to_table(outpath):
                'France': 'FR'}
 
     rgidf = utils.get_rgi_glacier_entities(df.index)
-    meta, _ = length_observations.get_length_observations(df.index)
+    meta, _ = lob.get_length_observations(df.index)
 
     for rgi, _ in df.iterrows():
         name = GLCDICT[rgi][2].split('(')[0]
         df.loc[rgi, 'name'] = name
-        #df.loc[rgi, 'RGI id'] = rgi
         df.loc[rgi, 'state'] = poldict[GLCDICT[rgi][3]]
         df.loc[rgi, 'lat/lon'] = '{:.2f}/{:.2f}'.\
             format(rgidf.loc[rgidf.RGIId == rgi, 'CenLon'].iloc[0],

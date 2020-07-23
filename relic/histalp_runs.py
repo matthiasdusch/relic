@@ -1,5 +1,4 @@
 import numpy as np
-import pandas as pd
 import xarray as xr
 import logging
 import itertools
@@ -13,7 +12,7 @@ from oggm.core.climate import compute_ref_t_stars
 from oggm import entity_task, GlacierDirectory
 from oggm.exceptions import InvalidParamsError
 
-from relic.spinup import systematic_spinup2
+from relic.spinup import systematic_spinup
 from relic.preprocessing import merge_pair_dict
 from relic.postprocessing import relative_length_change
 
@@ -82,19 +81,17 @@ def relic_from_climate_data(gdir, ys=None, ye=None, min_ys=None,
                             **kwargs)
 
 
-def spinup_plus_histalp(gdir, meta=None, obs=None, mb_bias=None, runsuffix=''):
+def spinup_plus_histalp(gdir, meta=None, mb_bias=None, runsuffix=''):
     # take care of merged glaciers
     rgi_id = gdir.rgi_id.split('_')[0]
 
-    # select meta and obs
+    # select meta
     meta = meta.loc[rgi_id].copy()
-    # obs = obs.loc[rgi_id].copy()
     # we want to simulate as much as possible -> histalp till 2014
-    # obs_ye = obs.dropna().index[-1]
     obs_ye = 2014
 
     # --------- SPIN IT UP ---------------
-    tbias = systematic_spinup2(gdir, meta)
+    tbias = systematic_spinup(gdir, meta)
 
     if tbias == -999:
 
@@ -164,10 +161,6 @@ def spinup_plus_histalp(gdir, meta=None, obs=None, mb_bias=None, runsuffix=''):
         for yr in rval['histalp'].index:
             fmod.run_until(yr)
             trib.loc[yr] = fmod.fls[flix].length_m
-
-        # assert trib.iloc[0] == trib.max(), ('the tributary was not connected'
-        #                                    'to the main glacier at the start'
-        #                                    'of this histalp run')
 
         trib -= trib.iloc[0]
         rval['trib_dl'] = trib
@@ -255,7 +248,8 @@ def multi_parameter_run(paramdict, gdirs, meta, obs, runid=None, runsuffix=''):
                 gd2merge = [gd for gd in gdirs if gd.rgi_id in [gid] + merg[0]]
 
                 # actual merge task
-                log.warning('DeprecationWarning: If downloadlink is updated to gdirs_v1.2, remove filename kwarg')
+                log.warning('DeprecationWarning: If downloadlink is updated ' +
+                            'to gdirs_v1.2, remove filename kwarg')
                 gdir_merged = merge_glacier_tasks(gd2merge, gid,
                                                   buffer=merg[1],
                                                   filename='climate_monthly')
@@ -281,7 +275,7 @@ def multi_parameter_run(paramdict, gdirs, meta, obs, runid=None, runsuffix=''):
 
         # do the actual simulations
         rval = execute_entity_task(spinup_plus_histalp,
-                                   gdirs2sim, meta=meta, obs=obs,
+                                   gdirs2sim, meta=meta,
                                    mb_bias=mbbias,
                                    runsuffix=runsuffix
                                    )

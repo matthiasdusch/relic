@@ -1,49 +1,66 @@
 import os
 import pandas as pd
-import urllib
 import numpy as np
 
-from relic.preprocessing import GLCDICT
+from relic import preprocessing as pp
 
 
-def get_wgms(rgiids, firstyear=1850):
+def get_wgms(rgiids, firstyear=1850, reconstruction=False):
 
-    wgms_c = pd.read_csv(os.path.join(
-        os.path.dirname(__file__), 'WGMS-FoG-2018-11-C-FRONT-VARIATION.csv'))
+    if reconstruction:
+        wgms = pd.read_csv(os.path.join(
+            os.path.dirname(__file__),
+            'WGMS-FoG-2019-12-RR-RECONSTRUCTION-FRONT-VARIATION.csv'))
+    else:
+        wgms = pd.read_csv(os.path.join(
+            os.path.dirname(__file__),
+            'WGMS-FoG-2019-12-C-FRONT-VARIATION.csv'), decimal=',')
 
     dfmeta = pd.DataFrame([], index=rgiids, columns=['name', 'first',
                                                      'measurements', 'dL2003'])
     dfdata = pd.DataFrame([], index=rgiids, columns=np.arange(firstyear, 2020))
 
     for rgi in rgiids:
-        if GLCDICT.get(rgi)[0] != 'wgms':
-            # remove from meta and out and continue
-            dfdata.drop(rgi)
-            dfmeta.drop(rgi)
-            continue
-
-        # WGMS ID
-        wid = GLCDICT.get(rgi)[1]
+        if reconstruction:
+            wid = pp.WGMS_RR.get(rgi)
+        else:
+            glcd = pp.GLCDICT.get(rgi)
+            if glcd[0] != 'wgms':
+                # remove from meta and out and continue
+                dfdata.drop(rgi)
+                dfmeta.drop(rgi)
+                continue
+            wid = glcd[1]
 
         # select glacier from wgms data
-        glc = wgms_c.loc[wgms_c['WGMS_ID'] == wid, :]
-        t0 = np.floor(glc['REFERENCE_DATE']/10000)
+        glc = wgms.loc[wgms['WGMS_ID'] == wid, :]
+        if reconstruction:
+            t0 = glc['REFERENCE_YEAR']
+            yr = glc['YEAR']
+        else:
+            t0 = np.floor(glc['REFERENCE_DATE']/10000)
+            yr = glc['Year']
         t0 = t0[t0 >= firstyear].iloc[0]
 
-        # secial case
+        # secial cases
         if (rgi == 'RGI60-11.00897') and (firstyear <= 1855):
             # Hintereisferner max extent is missing in WGMS
             # Span et al 1997:
             t0 = 1855
 
-        yr = glc['Year']
         yr = yr[yr > t0]
-        dl = glc['FRONT_VARIATION'][yr.index].cumsum()
+        dl = glc['FRONT_VARIATION'][yr.index].astype(float).cumsum()
 
         # new dataframe for complete time series
         df = pd.Series(index=np.arange(firstyear, 2020))
         df.loc[yr] = dl.values
         df.loc[t0] = 0
+
+        # use reconstruction for Bossons and Mer de Glace
+        if (not reconstruction) and (
+                (rgi == 'RGI60-11.03646') or (rgi == 'RGI60-11.03643')):
+            # add reconstruction data
+            df = add_observations(df, rgi, firstyear)
 
         # get first measurement
         dfmeta.loc[rgi, 'first'] = t0
@@ -52,7 +69,7 @@ def get_wgms(rgiids, firstyear=1850):
         dfdata.loc[rgi] = df
 
         # meta stuff
-        dfmeta.loc[rgi, 'name'] = GLCDICT.get(rgi)[2]
+        dfmeta.loc[rgi, 'name'] = pp.GLCDICT.get(rgi)[2]
         dfmeta.loc[rgi, 'measurements'] = len(dfdata.loc[rgi].dropna())
 
         # get 2003 length change
@@ -66,21 +83,21 @@ def get_glamos(rgiids, firstyear=1850):
 
     glamos = pd.read_csv(os.path.join(os.path.dirname(__file__),
                                       'lengthchange.csv'),
-                         header=6)
+                         sep=';', header=4)
 
     dfmeta = pd.DataFrame([], index=rgiids, columns=['name', 'first',
                                                      'measurements', 'dL2003'])
     dfdata = pd.DataFrame([], index=rgiids, columns=np.arange(firstyear, 2020))
 
     for rgi in rgiids:
-        if GLCDICT.get(rgi)[0] != 'glamos':
+        if pp.GLCDICT.get(rgi)[0] != 'glamos':
             # remove from meta and out and continue
             dfdata.drop(rgi)
             dfmeta.drop(rgi)
             continue
 
         # GLAMOS ID
-        gid = GLCDICT.get(rgi)[1]
+        gid = pp.GLCDICT.get(rgi)[1]
 
         # select glacier from glamos data
         glc = glamos.loc[glamos['glacier id'] == gid, :]
@@ -108,6 +125,17 @@ def get_glamos(rgiids, firstyear=1850):
             df.loc[2007] = df.loc[1983] - 230
             df.loc[2008:] -= 230
 
+            # add reconstruction data
+            df = add_reconstruction(df, rgi, t0, firstyear)
+
+        elif rgi == 'RGI60-11.01270':
+            # Oberer Grindelwald
+            # Tecnically there is a data gap between 1999 and 2003
+            df.loc[2003] = df.loc[1999]
+
+            # add reconstruction data
+            df = add_reconstruction(df, rgi, t0, firstyear)
+
         elif rgi == 'RGI60-11.02051':
             # Tschierva: add Roseg length
             roseg = glamos.loc[glamos['glacier id'] == 'E23/11', :]
@@ -127,95 +155,7 @@ def get_glamos(rgiids, firstyear=1850):
         dfdata.loc[rgi] = df
 
         # meta stuff
-        dfmeta.loc[rgi, 'name'] = GLCDICT.get(rgi)[2]
-        dfmeta.loc[rgi, 'measurements'] = len(dfdata.loc[rgi].dropna())
-
-        # get 2003 length change
-        dfmeta.loc[rgi, 'dL2003'] = _get_2003_dl(dfdata.loc[rgi],
-                                                 dfmeta.loc[rgi, 'name'])
-
-    return dfmeta, dfdata
-
-
-def get_leclercq(rgiids):
-
-    # --- Download and read Leclercq Files ---
-    leclercqhttp = 'https://folk.uio.no/paulwl/downloads/'
-    infofile = 'ALL_glacierinfo.txt'
-    recordsfile = 'ALL_records.txt'
-    urllib.request.urlretrieve(leclercqhttp + infofile, infofile)
-    urllib.request.urlretrieve(leclercqhttp + recordsfile, recordsfile)
-    lq_info = pd.read_csv(infofile, delimiter='\t')
-    lq_rec = pd.read_csv(recordsfile, delimiter='\t', na_values='-99999')
-
-    out = []
-
-    y1850 = np.arange(1850, 2020)
-
-    # loop over all Leclercq glaciers:
-    lq_names = lq_rec.columns[0:-1:3]
-    for glc in lq_names:
-
-        # ---- 1. get Leclercq length record data
-        # column in length record data
-        icol = lq_rec.columns.get_loc(glc)
-        # actual data
-        year = np.array(lq_rec.iloc[1:, icol].dropna(), dtype=int)
-        dL = np.array(lq_rec.iloc[1:, icol+1].dropna(), dtype=float)
-
-        # ---- 2. get Leclercq glacier info
-        # name and record number
-        num = int(glc.split()[0])
-        recname = glc.split()[1:]
-        current_glc = lq_info.loc[lq_info['num '] == num]
-        infoname = current_glc['name '].values[0]
-        regio = current_glc['region '].values[0]
-
-        # At the moment: only do Leclercq region 6
-        if regio != 6:
-            continue
-
-        LID = current_glc['ID '].values[0]
-
-        # check for consistency
-        if 1:
-            if not all(x in infoname for x in recname):
-                raise ValueError('Name Error while processing %s' % infoname)
-            elif not current_glc['first '].values[0] == year[0]:
-                raise ValueError('First Year Error while processing %s' % infoname)
-            elif not current_glc['last '].values[0] == year[-1]:
-                raise ValueError('Last Year Error while processing %s' % infoname)
-
-        # Save general information
-        tmp = pd.DataFrame([], index=[LID], columns=y1850, dtype=float)
-        tmp[year[year >= 1850]] = dL[year >= 1850]
-        out.append(tmp)
-
-    data = pd.concat(out)
-
-    dfmeta = pd.DataFrame([], index=rgiids, columns=['name', 'first',
-                                                     'measurements', 'dL2003'])
-    dfdata = pd.DataFrame([], index=rgiids, columns=y1850)
-
-    for rgi in rgiids:
-        if prepro.GLCDICT_old.get(rgi)[0] != 'leclercq':
-            # remove from meta and out and continue
-            dfdata.drop(rgi)
-            dfmeta.drop(rgi)
-            continue
-
-        # Leclercq ID
-        lid = prepro.GLCDICT_old.get(rgi)[1]
-
-        # get first measurement
-        dfmeta.loc[rgi, 'first'] = data.loc[lid].dropna().index[0]
-
-        # write data, and make it relative
-        dfdata.loc[rgi] = data.loc[lid]
-        dfdata.loc[rgi] -= dfdata.loc[rgi, dfmeta.loc[rgi, 'first']]
-
-        # meta stuff
-        dfmeta.loc[rgi, 'name'] = prepro.GLCDICT_old.get(rgi)[2]
+        dfmeta.loc[rgi, 'name'] = pp.GLCDICT.get(rgi)[2]
         dfmeta.loc[rgi, 'measurements'] = len(dfdata.loc[rgi].dropna())
 
         # get 2003 length change
@@ -279,6 +219,31 @@ def add_merge_length(main, merge, firstyear=1850):
     df.loc[main.dropna().index] = dl_ref + main.dropna().values
 
     assert (df.index.unique() == df.index).all()
+
+    return df
+
+
+def add_reconstruction(df, rec_id, t0, firstyear):
+    meta, data = get_wgms([rec_id], reconstruction=True,
+                          firstyear=firstyear)
+    diff = data.iloc[0].loc[data.iloc[0].index <= t0]
+    df.loc[diff.index] = diff
+    df.loc[df.index > t0] += diff.dropna().iloc[-1]
+
+    return df
+
+
+def add_observations(df, rec_id, firstyear):
+    meta, data = get_wgms([rec_id], reconstruction=True,
+                          firstyear=firstyear)
+
+    t0 = data.iloc[0].dropna().index[-1]
+
+    diff1 = data.iloc[0].loc[data.iloc[0].index <= t0]
+    diff2 = df.loc[df.index >= t0] - df.loc[t0]
+
+    df.loc[diff1.index] = diff1
+    df.loc[df.index >= t0] = df.loc[t0] + diff2
 
     return df
 
