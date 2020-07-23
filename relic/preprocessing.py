@@ -228,7 +228,8 @@ def configure(workdir, glclist, baselineclimate='HISTALP', resetwd=False):
         cfg.PARAMS['prcp_scaling_factor'] = 1.75
         cfg.PARAMS['temp_melt'] = -1.75
         # run histalp climate on all glaciers!
-        execute_entity_task(tasks.process_histalp_data, gdirs + ref_gdirs)
+        execute_entity_task(tasks.process_histalp_data, gdirs + ref_gdirs,
+                            y0=1849)
 
     # TODO: if I do use custom climate stuff like histalp_annual_mean:
     #   ->>>> look back at commits before 1.10.2019
