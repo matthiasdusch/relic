@@ -1,5 +1,4 @@
 import numpy as np
-import pandas as pd
 import xarray as xr
 import logging
 import itertools
@@ -82,15 +81,13 @@ def relic_from_climate_data(gdir, ys=None, ye=None, min_ys=None,
                             **kwargs)
 
 
-def spinup_plus_histalp(gdir, meta=None, obs=None, mb_bias=None):
+def spinup_plus_histalp(gdir, meta=None, mb_bias=None, runsuffix=''):
     # take care of merged glaciers
     rgi_id = gdir.rgi_id.split('_')[0]
 
-    # select meta and obs
+    # select meta
     meta = meta.loc[rgi_id].copy()
-    # obs = obs.loc[rgi_id].copy()
     # we want to simulate as much as possible -> histalp till 2014
-    # obs_ye = obs.dropna().index[-1]
     obs_ye = 2014
 
     # --------- SPIN IT UP ---------------
@@ -103,7 +100,6 @@ def spinup_plus_histalp(gdir, meta=None, obs=None, mb_bias=None):
                 'spinup': np.nan,
                 'tbias': np.nan, 'tmean': np.nan, 'pmean': np.nan}
         return rval
-
     # --------- GET SPINUP STATE ---------------
     tmp_mod = FileModel(gdir.get_filepath('model_run',
                                           filesuffix='_spinup'))
@@ -113,7 +109,7 @@ def spinup_plus_histalp(gdir, meta=None, obs=None, mb_bias=None):
     try:
         relic_from_climate_data(gdir, ys=meta['first'], ye=obs_ye,
                                 init_model_fls=tmp_mod.fls,
-                                output_filesuffix='_histalp',
+                                output_filesuffix='_histalp' + runsuffix,
                                 mass_balance_bias=mb_bias)
     except RuntimeError as err:
         if 'Glacier exceeds domain boundaries' in err.args[0]:
@@ -123,7 +119,7 @@ def spinup_plus_histalp(gdir, meta=None, obs=None, mb_bias=None):
             raise RuntimeError('other error')
 
     ds1 = xr.open_dataset(gdir.get_filepath('model_diagnostics',
-                                            filesuffix='_histalp'))
+                                            filesuffix='_histalp' + runsuffix))
     ds2 = xr.open_dataset(gdir.get_filepath('model_diagnostics',
                                             filesuffix='_spinup'))
     # store mean temperature and precipitation
@@ -158,16 +154,13 @@ def spinup_plus_histalp(gdir, meta=None, obs=None, mb_bias=None):
         fls = gdir.read_pickle('model_flowlines')
         flix = np.where([fl.rgi_id != rgi_id for fl in fls])[0][-1]
 
-        fmod = FileModel(gdir.get_filepath('model_run', filesuffix='_histalp'))
+        fmod = FileModel(gdir.get_filepath('model_run',
+                                           filesuffix='_histalp' + runsuffix))
         assert fmod.fls[flix].nx == fls[flix].nx, ('filemodel and gdir '
                                                    'flowlines do not match')
         for yr in rval['histalp'].index:
             fmod.run_until(yr)
             trib.loc[yr] = fmod.fls[flix].length_m
-
-        # assert trib.iloc[0] == trib.max(), ('the tributary was not connected'
-        #                                    'to the main glacier at the start'
-        #                                    'of this histalp run')
 
         trib -= trib.iloc[0]
         rval['trib_dl'] = trib
@@ -175,7 +168,7 @@ def spinup_plus_histalp(gdir, meta=None, obs=None, mb_bias=None):
     return rval
 
 
-def multi_parameter_run(paramdict, gdirs, meta, obs, runid=None):
+def multi_parameter_run(paramdict, gdirs, meta, obs, runid=None, runsuffix=''):
     # get us all parameters
     keys = paramdict.keys()
     values = paramdict.values()
@@ -255,15 +248,18 @@ def multi_parameter_run(paramdict, gdirs, meta, obs, runid=None):
                 gd2merge = [gd for gd in gdirs if gd.rgi_id in [gid] + merg[0]]
 
                 # actual merge task
+                log.warning('DeprecationWarning: If downloadlink is updated ' +
+                            'to gdirs_v1.2, remove filename kwarg')
                 gdir_merged = merge_glacier_tasks(gd2merge, gid,
-                                                  buffer=merg[1])
+                                                  buffer=merg[1],
+                                                  filename='climate_monthly')
 
                 # remove the entity glaciers from the simulation list
                 gdirs2sim = [gd for gd in gdirs2sim if
                              gd.rgi_id not in [gid] + merg[0]]
 
-                """
                 # uncomment to visually inspect the merged glacier
+                """
                 import matplotlib.pyplot as plt
                 from oggm import graphics
                 import os
@@ -272,7 +268,6 @@ def multi_parameter_run(paramdict, gdirs, meta, obs, runid=None):
                                           use_model_flowlines=True, ax=ax)
                 f.savefig(os.path.join(cfg.PATHS['working_dir'], gid) + '.png')
                 """
-
                 gdirs_merged.append(gdir_merged)
 
         # add merged glaciers to the left over entity glaciers
@@ -280,8 +275,9 @@ def multi_parameter_run(paramdict, gdirs, meta, obs, runid=None):
 
         # do the actual simulations
         rval = execute_entity_task(spinup_plus_histalp,
-                                   gdirs2sim, meta=meta, obs=obs,
-                                   mb_bias=mbbias
+                                   gdirs2sim, meta=meta,
+                                   mb_bias=mbbias,
+                                   runsuffix=runsuffix
                                    )
         # remove possible Nones
         rval = [rl for rl in rval if rl is not None]

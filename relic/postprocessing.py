@@ -1,30 +1,9 @@
 import numpy as np
 import pandas as pd
+import ast
+from copy import deepcopy
 
 from relic.length_observations import get_length_observations
-
-
-def calc_acdc(_obs, spinup, model, meta, col):
-
-    obs = _obs.dropna().copy()
-
-    try:
-        spin = (spinup.loc[:, col] - spinup.loc[0, col]).dropna().iloc[-1][0]
-    except IndexError:
-        return pd.Series([np.nan])
-
-    dl = spin + meta['dL2003'].iloc[0]
-    # relative length change
-    hist = model.loc[:, col] - model.loc[:, col].iloc[0] + dl
-
-    # only look at points with measurements
-    hist = hist.loc[obs.index].squeeze()
-
-    # accumulated difference change
-    acdc = (obs-hist).diff().abs().cumsum()
-    acdc.iloc[0] = 0
-
-    return acdc
 
 
 def relative_length_change(meta, spinup, histrun):
@@ -36,23 +15,9 @@ def relative_length_change(meta, spinup, histrun):
     return rel_dl
 
 
-def mae(obs, model):
-    return np.mean(np.abs(obs-model).dropna())
+def mae_weighted(_df):
 
-
-def mae_all(df, normalised=False):
-    raise RuntimeError
-    maeall = df.loc[:, df.columns != 'obs'].sub(df.loc[:, 'obs'], axis=0).\
-        dropna().abs().mean()
-
-    if normalised:
-        # return maeall/maeall.max()
-        return (maeall - maeall.min())/(maeall.max()-maeall.min())
-    else:
-        return maeall
-
-
-def mae_weighted(df, normalised=False):
+    df = deepcopy(_df)
 
     # calculate MAE, without mean first
     maeall = df.loc[:, df.columns != 'obs'].sub(df.loc[:, 'obs'], axis=0). \
@@ -67,89 +32,17 @@ def mae_weighted(df, normalised=False):
     # weight as size of gap in both directions
     wgh = np.zeros_like(oix, dtype=float)
     wgh[0:-1] = doix/2
-    wgh[1:] = doix/2
+    wgh[1:] += doix/2
     # and a minimum weight of 1
     wgh = np.maximum(wgh, 1)
 
-    # now apply weight
-    maeall = maeall.mul(wgh, axis=0)
-    # and take mean
-    maeall = maeall.mean()
+    # now apply weight and mean
+    maeall = maeall.mul(wgh, axis=0).sum()/sum(wgh)
 
-    if normalised:
-        # return maeall/maeall.max()
-        return (maeall - maeall.min())/(maeall.max()-maeall.min())
-    else:
-        return maeall
+    return maeall
 
 
-def mae_diff_mean(df, yr, normalised=False):
-    # MAE of XX year difference
-    df_dt = df.copy()
-    df_dt.index = pd.to_datetime(df_dt.index, format="%Y")
-    rundif = df_dt.resample("%dY" % yr).mean().diff()
-
-    maediff = rundif.loc[:, rundif.columns != 'obs']. \
-        sub(rundif.loc[:, 'obs'], axis=0).dropna().abs().mean()
-
-    if normalised:
-        return (maediff - maediff.min())/(maediff.max()-maediff.min())
-    else:
-        return maediff
-
-
-def mae_diff_yearly(df, yr, normalised=False):
-    # MAE of XX year difference
-    df_dt = df.copy()
-    df_dt.index = pd.to_datetime(df_dt.index, format="%Y")
-    # rundif = df_dt.resample("%dY" % yr).mean().diff()
-    # rundif = df.diff(yr).copy()
-    rundif = df.copy() * np.nan
-
-    obsyrs = pd.Series(df.obs.dropna().index)
-    for y1 in obsyrs.iloc[:-yr]:
-        y2 = obsyrs[((obsyrs-y1-yr) >= 0)].iloc[0]
-        rundif.loc[y1, :] = df.loc[y2, :] - df.loc[y1, :]
-
-    maediff = rundif.loc[:, rundif.columns != 'obs'].\
-        sub(rundif.loc[:, 'obs'], axis=0).dropna().abs().mean()
-
-    if normalised:
-        return (maediff - maediff.min())/(maediff.max()-maediff.min())
-    else:
-        return maediff
-
-
-def diff_corr(df, yr=10, normalised=False):
-    # MAE of XX year difference
-    rundif = df.copy() * np.nan
-
-    obsyrs = pd.Series(df.obs.dropna().index)
-    for y1 in obsyrs.iloc[:-yr]:
-        y2 = obsyrs[((obsyrs-y1-yr) >= 0)].iloc[0]
-        rundif.loc[y1, :] = df.loc[y2, :] - df.loc[y1, :]
-
-    corre = rundif.dropna().corr()['obs'].loc[~rundif.columns.isin(['obs'])]
-
-    if normalised:
-        return 1 - (corre - corre.min())/(corre.max() - corre.min())
-    else:
-        return corre
-
-
-def r2(obs, model):
-    ix = obs.dropna().index
-    return np.corrcoef(obs.dropna(), model[ix])[0, 1]
-
-
-def dummy_dismantel_multirun():
-    # just to remember
-    import ast
-    # rvaldict keys are strings, transform to dict with
-    # combinationdict=ast.literal_eval(rvaldictkey)
-
-
-def runs2df(runs):
+def runs2df(runs, glenamin=0):
 
     # get all glaciers
     glcs = []
@@ -157,7 +50,21 @@ def runs2df(runs):
         glcs += [gl['rgi_id'] for gl in list(run.values())[0]]
     glcs = np.unique(glcs).tolist()
 
-    # take care of merged ones
+    """
+    # subset
+    glcs = ['RGI60-11.00746',
+            'RGI60-11.00897_merged',
+            'RGI60-11.01270',
+            'RGI60-11.01450_merged',
+            'RGI60-11.01946',
+            'RGI60-11.02051_merged',
+            'RGI60-11.02740',
+            'RGI60-11.03638',
+            'RGI60-11.03643_merged',
+            'RGI60-11.03646']
+    """
+
+# take care of merged ones
     rgi_ids = [gl.split('_')[0] for gl in glcs]
 
     meta, data = get_length_observations(rgi_ids)
@@ -165,12 +72,16 @@ def runs2df(runs):
     # store results per glacier in a dict
     glcdict = {}
 
+    tbiasdict = {}
+
     for rgi, mrgi in zip(rgi_ids, glcs):
         _meta = meta.loc[rgi].copy()
         _data = data.loc[rgi].copy()
 
         df = pd.DataFrame([], index=np.arange(1850, 2020))
         df.loc[_data.index, 'obs'] = _data
+
+        tbias_series = pd.Series([])
 
         """
         if 'XXX_merged' in mrgi:
@@ -193,8 +104,32 @@ def runs2df(runs):
                 continue
 
             rkey = list(run.keys())[0]
+            para = ast.literal_eval('{' + rkey + '}')
+
+            if para['glena_factor'] < glenamin:
+                continue
+
+#            if para['glena_factor'] > 3:
+#                continue
+
+            """
+            if para['mbbias'] < -800:
+                continue
+            if para['mbbias'] > 800:
+                continue
+
+            if para['prcp_scaling_factor'] < 1:
+                continue
+            if para['prcp_scaling_factor'] > 3:
+                continue
+            """
+
+            #if not np.isclose(para['prcp_scaling_factor'], 1.75, atol=0.01):
+            #    continue
 
             df.loc[rdic['rel_dl'].index, rkey] = rdic['rel_dl']
+
+            tbias_series[rkey] = rdic['tbias']
 
             """
             if 'XXX_merged' in glid:
@@ -202,141 +137,115 @@ def runs2df(runs):
             """
 
         glcdict[mrgi] = df
+        tbiasdict[mrgi] = tbias_series
         """
         if 'XXX_merged' in glid:
             glcdict[mid] = dfmerge
         """
 
-    return glcdict
+    return glcdict, tbiasdict
 
 
-def pareto(glcdict, maedyr):
-    paretodict = {}
+def coverage_loop(df, use, obs):
 
-    for glc in glcdict.keys():
+    coverage = pd.Series()
 
-        # get my measures
-        # maes = mae_all(glcdict[glc], normalised=True)
-        maediff = mae_diff_yearly(glcdict[glc], maedyr, normalised=True)
-        # corre = diff_corr(glcdict[glc], yr=maedyr, normalised=True)
-        maes = mae_weighted(glcdict[glc], normalised=True)
-        # print(mae_wght)
+    for col, val in df.iteritems():
 
-        # utopian
-        up = [maes.min(), maediff.min()]
-        # up = [maes.min(), maediff.min(), corre.min()]
+        # don't use anything twice
+        if col in use:
+            continue
 
-        # euclidian dist
-        # TODO pareto weight
-        pwgh = 5
-        pwgh = 1
-        edisx = np.sqrt(pwgh*(maes-up[0])**2 +
-                        (maediff-up[1])**2).idxmin()
-        #                (corre-up[2])**2).idxmin()
+        nucov = calc_coverage(df, use + [col], obs)
+        coverage[col] = nucov
 
-        if 'XXX_merged' in glc:
-            mid = merged_ids(glc)
-            # get my measures
-            maes2 = mae_all(glcdict[mid], normalised=True)
-            maediff2 = mae_diff_yearly(glcdict[mid], maedyr, normalised=True)
-            # corre2 = diff_corr(glcdict[mid], yr=maedyr, normalised=True)
-            up += [maes2.min(), maediff2.min()]
-            # up += [maes2.min(), maediff2.min(), corre2.min()]
-
-            edisx = np.sqrt((maes-up[0])**2 +
-                            (maediff-up[1])**2 +
-                            (maes2-up[2])**2 +
-                            (maediff2-up[3])**2).idxmin()
-
-        paretodict[glc] = edisx
-
-        # plot_pareto(glc, edisx, maes, maediff)
-
-    return paretodict
+    return coverage
 
 
-def plot_pareto(glc, edisx, maes, maediff):
-    import matplotlib.pyplot as plt
-    import ast
-    import os
-    from colorspace import diverging_hcl
-    from matplotlib.colors import ListedColormap
+def calc_coverage(df, use, obs):
 
-    fig1, ax1 = plt.subplots(figsize=[15, 8])
+    # ensemble mean
+    ensmea = df.loc[:, use].mean(axis=1)
+    # ensemble std
+    ensstd = df.loc[:, use].std(axis=1)
 
-    ax1.plot(0, 0, '*k', markersize=20, label='utopian solution')
+    ens_p1 = ensmea + ensstd
+    ens_m1 = ensmea - ensstd
 
-    ax1.plot(maes.loc[edisx], maediff.loc[edisx], '*r', color='C2',
-             markersize=25, markeredgecolor='C3',
-             label='choosen as best solution')
+    # good index
+    oix = ensmea.loc[obs.dropna().index].dropna().index
 
-    ax1.plot(maes.loc[maes.idxmin()], maediff.loc[maes.idxmin()],
-             '*r', color='C0', markersize=20,
-             label='best result for Objective 1')
-    ax1.plot(maes.loc[maediff.idxmin()], maediff.loc[maediff.idxmin()],
-             '*r', color='C1', markersize=20,
-             label='best result for Objective 2')
+    cover = ((obs.loc[oix] > ens_m1.loc[oix]) &
+             (obs.loc[oix] < ens_p1.loc[oix])).sum()/len(oix)
 
-    df = pd.DataFrame([], columns=['mae', 'maedif', 'mb', 'prcp'])
+    return cover
 
-    # prcp
-    cmap = diverging_hcl(h=[260, 0], c=80, l=[30, 90], power=2).cmap(n=18)
-    cmap = cmap(np.arange(cmap.N))
-    cmap[:, -1] = np.append(np.linspace(1, 0.5, 9)**2, np.linspace(0.5, 1, 9)**2)
-    prcpcmp = ListedColormap(cmap)
 
-    # mbbias
-    cmap = diverging_hcl(h=[130, 43], c=100, l=[70, 90], power=1.5).cmap(n=8)
-    cmap = cmap(np.arange(cmap.N))
-    cmap[:, -1] = np.append(np.linspace(1, 0.5, 4)**2, np.linspace(0.5, 1, 4)**2)
-    mbbcmp = ListedColormap(cmap)
+def mae_coverage(df, use, obs):
+    maecover = pd.Series()
+    for col, val in df.iteritems():
+        # don't use anything twice
+        if col in use:
+            continue
+        ens = df.loc[:, use + [col]].mean(axis=1)
 
-    for run in maes.index:
-        prm = ast.literal_eval('{' + run + '}')
+        maecover[col] = mae_weighted(pd.concat([obs, ens], axis=1))[0]
 
-        df = df.append({'mae': maes.loc[run],
-                        'maedif': maediff.loc[run],
-                        'mb': prm['mbbias'],
-                        'prcp': prm['prcp_scaling_factor']},
-                       ignore_index=True)
+    return maecover
 
-        """
-        plt.plot(maes.loc[run], maediff.loc[run], 'ok',
-                 color=mbdicc[prm['mbbias']],
-                 alpha=mbdica[prm['mbbias']])
 
-        plt.plot(maes.loc[run], maediff.loc[run], 'ok',
-                 color=pcdicc[prm['prcp_scaling_factor']],
-                 alpha=pcdica[prm['prcp_scaling_factor']])
-        """
+def optimize_cov(_runs, obs, glid, minuse=5):
+    runs = deepcopy(_runs)
 
-    sc2 = ax1.scatter(df.mae, df.maedif, c=df.mb, cmap=mbbcmp, label='')
-    sc1 = ax1.scatter(df.mae, df.maedif, c=df.prcp, cmap=prcpcmp.reversed(),
-                      label='')
+    # list which indices to use
+    maestart = mae_weighted(pd.concat([obs, runs], axis=1)).sort_values()
 
-    cx1 = fig1.add_axes([0.71, 0.38, 0.05, 0.55])
-    cb1 = plt.colorbar(sc1, cax=cx1)
-    cb1.set_label('Precipitation scaling factor', fontsize=16)
+    #use = maestart.index[:minuse].to_list()
+    use = [maestart.index[0]]
 
-    cx2 = fig1.add_axes([0.85, 0.38, 0.05, 0.55])
-    cb2 = plt.colorbar(sc2, cax=cx2)
-    cb2.set_label('Mass balance bias', fontsize=16)
+    while True:
 
-    name = glcnames(glc)
-    ax1.set_title(name, fontsize=30)
-    ax1.tick_params(axis='both', which='major', labelsize=22)
+        ens = runs.loc[:, use].mean(axis=1)
 
-    ax1.set_ylabel('5yr difference MAE (normalised)',
-                   fontsize=26)
-    ax1.set_xlabel('MAE of relative length change (normalised)', fontsize=26)
+        mae = mae_weighted(pd.concat([obs, ens], axis=1))[0]
 
-    ax1.legend(bbox_to_anchor=(1.04, 0),
-               fontsize=18, loc="lower left", ncol=1)
+        cov = calc_coverage(runs, use, obs)
 
-    ax1.grid(True)
-    fig1.tight_layout()
-    pout = '/home/matthias/length_change_1850/multi/array/190926/pareto'
-    fn1 = os.path.join(pout, 'pareto_%s.png' % glc)
-    # fn2 = os.path.join(pout, 'pareto_%s.pdf' % name.split()[0])
-    fig1.savefig(fn1)
-    # fig1.savefig(fn2)
+        print('%s: %2d, %.2f, %.4f' % (glid, len(use), mae, cov))
+
+        # Add a run:
+        all_mae = mae_coverage(runs, use, obs)
+
+        # coverage
+        all_cov = coverage_loop(runs, use, obs)
+        # coverage should be > 0.6 or at least higher than before
+        thresh2 = min(cov, 0.6)
+
+        # filter
+        optim = all_mae.copy()
+        optim[all_cov <= thresh2] = np.nan
+
+        minmaeidx = optim.idxmin()
+
+        if optim.min() < mae:
+            use.append(minmaeidx)
+        elif optim.min() > mae:
+            if (len(use) < minuse) or (cov < 0.6):
+                use.append(minmaeidx)
+            else:
+                return use
+        elif pd.isna(minmaeidx):
+            if (len(use) < minuse):
+                print('this is not documented in the paper')
+                use.append(all_mae.idxmin())
+            elif (cov < 0.6):
+                print('enough members, did not reach cov=0.6, but thats ok')
+                return use
+            else:
+                print('No increasing members, but already enough and cov>0.6,',
+                      ' we are good to go.')
+                return use
+
+        if len(use) == 30:
+            # that is enough and should not happend anywys
+            raise ValueError('that should not happen')
