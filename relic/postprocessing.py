@@ -310,12 +310,16 @@ def runs2df(runs, glenamin=0):
     # store results per glacier in a dict
     glcdict = {}
 
+    tbiasdict = {}
+
     for rgi, mrgi in zip(rgi_ids, glcs):
         _meta = meta.loc[rgi].copy()
         _data = data.loc[rgi].copy()
 
         df = pd.DataFrame([], index=np.arange(1850, 2020))
         df.loc[_data.index, 'obs'] = _data
+
+        tbias_series = pd.Series([])
 
         """
         if 'XXX_merged' in mrgi:
@@ -343,11 +347,6 @@ def runs2df(runs, glenamin=0):
             if para['glena_factor'] < glenamin:
                 continue
 
-            if para['glena_factor'] < 1.4:
-                continue
-            if para['glena_factor'] > 1.6:
-                continue
-
 #            if para['glena_factor'] > 3:
 #                continue
 
@@ -368,18 +367,21 @@ def runs2df(runs, glenamin=0):
 
             df.loc[rdic['rel_dl'].index, rkey] = rdic['rel_dl']
 
+            tbias_series[rkey] = rdic['tbias']
+
             """
             if 'XXX_merged' in glid:
                 dfmerge.loc[rdic['trib_dl'].index, rkey] = rdic['trib_dl']
             """
 
         glcdict[mrgi] = df
+        tbiasdict[mrgi] = tbias_series
         """
         if 'XXX_merged' in glid:
             glcdict[mid] = dfmerge
         """
 
-    return glcdict
+    return glcdict, tbiasdict
 
 
 def rearfit(df, normalised=False):
@@ -3090,7 +3092,8 @@ def optimize_cov2(_runs, obs, glid, minuse=5):
                 return use
         elif pd.isna(minmaeidx):
             if (len(use) < minuse):
-                raise ValueError('this is not documented in the paper')
+                print('this is not documented in the paper')
+                use.append(all_mae.idxmin())
             elif (cov < 0.6):
                 print('enough members, did not reach cov=0.6, but thats ok')
                 return use

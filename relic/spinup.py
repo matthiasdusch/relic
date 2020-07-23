@@ -42,9 +42,11 @@ def minimize_dl(tbias, mb, fls, dl, len2003, glena, gdir, optimization):
                            glen_a=glena)
 
     try:
-        relic_run_until_equilibrium(model)
+        relic_run_until_equilibrium(model,max_ite=200)
     except ValueError:
-        pass
+        log.info('(%s) tbias of %.2f did exceed max iterations (def 1000yrs)' %
+                 (gdir.rgi_id, tbias))
+        return len2003**2
     except FloatingPointError:
         if optimization is True:
             log.info('(%s) tbias of %.2f gave length: %.2f' %
@@ -107,10 +109,12 @@ def final_spinup(tbias, mb, fls, dl, len2003, delta, gdir, filesuffix='_spinup')
     yrs = 50
     dl_spinup = model.length_m - len2003
 
-    while delta < (dl - dl_spinup)*2:
+    while (dl - dl_spinup) > delta:
         model.run_until(yrs)
         dl_spinup = model.length_m - len2003
         yrs += 5
+        if yrs > 5000:
+            raise RuntimeError('Something went horrible wrong...')
 
     run_path = gdir.get_filepath('model_run',
                                  filesuffix=filesuffix,
@@ -160,6 +164,8 @@ def systematic_spinup(gdir, meta, glena=None):
     totest = np.unique(np.round(np.append(totest, fg-(totest-fg)), 2))
     totest = np.clip(totest, -3, 1)
 
+    totest = np.arange(-8, 2.1)
+
     rval = pd.DataFrame([], columns=['delta'])
 
     counter = 0
@@ -170,14 +176,14 @@ def systematic_spinup(gdir, meta, glena=None):
     while True:
         # dont do anything twice
         totest = totest[~np.isin(totest, rval.index)]
-
         for tb in totest:
             delta = minimize_dl(tb, mb, fls, dl, len2003, glena, gdir, True)
             counter += 1
+            log.info('counter: %d' % counter)
             if delta == len2003**2:
                 delta = np.nan
             rval.loc[tb, 'delta'] = delta
-            if np.sqrt(delta) < fls[-1].dx_meter*2:
+            if np.sqrt(delta) < fls[-1].dx_meter:
                 found_fit = True
                 break
         if found_fit is True:
@@ -277,4 +283,75 @@ def systematic_spinup(gdir, meta, glena=None):
     # --------- SPIN IT UP FOR REAL ---------------
     final_spinup(tbias, mb, fls, dl, len2003, delta, gdir)
     # minimize_dl(tbias, mb, fls, dl, len2003, glena, gdir, False)
+    return tbias
+
+
+def systematic_spinup2(gdir, meta, glena=None):
+    import numpy.polynomial.polynomial as poly
+
+    # --------- HOW SHALL WE SPIN ---------------
+
+    # how long are we at initialization
+    fls = gdir.read_pickle('model_flowlines')
+    # TODO maybe not use 2003 as fixed date, but rather ask for the RGI date
+    #   this then needs to be considered in meta as well
+    len2003 = fls[-1].length_m
+    # how long shall we go? MINUS for positive length change!
+    dl = -meta['dL2003']
+
+    # mass balance model
+    log.warning('DeprecationWarning: If downloadlink is updated to gdirs_v1.2, remove filename kwarg')
+    mb = MultipleFlowlineMassBalance(gdir, fls=fls,
+                                     mb_model_class=ConstantMassBalance,
+                                     filename='climate_monthly')
+
+    # coarse first test values
+    totest = np.arange(-5, -0.1)
+
+    # dataframe for results
+    rval = pd.DataFrame([], columns=['delta'], dtype=float)
+
+    # linespace counter
+    lsc = 0
+    # linespace shift
+    lss = [0.5, 0.25, 0.125, 0.06, 0.02]
+
+    while True:
+        # dont do anything twice
+        totest = totest[~np.isin(totest, rval.index)]
+        for tb in totest:
+            delta = minimize_dl(tb, mb, fls, dl, len2003, glena, gdir, True)
+            if delta == len2003**2:
+                delta = np.nan
+
+            rval.loc[tb, 'delta'] = delta
+            if np.sqrt(delta) < fls[-1].dx_meter:
+                break
+
+        if np.sqrt(delta) < fls[-1].dx_meter:
+            break
+
+        if lsc == len(lss):
+            log.info('SPINUP ERROR: (%s) use best result so far!' %
+                     gdir.rgi_id)
+            break
+
+        # no fit so far, get new tbias to test:
+        # current minima
+        cmin = rval['delta'].idxmin()
+
+        totest = np.linspace(cmin-lss[lsc], cmin+lss[lsc], 5).round(2)
+        lsc += 1
+
+    if rval['delta'].isna().all():
+        return -999
+
+    tbias = rval.dropna().idxmin().iloc[0]
+    delta = np.sqrt(rval.loc[tbias, 'delta'])
+
+    log.info('(%s) delta = %.2f (flowline spacing = %.2f)' %
+             (gdir.rgi_id, delta, fls[-1].dx_meter))
+
+    # --------- SPIN IT UP FOR REAL ---------------
+    final_spinup(tbias, mb, fls, dl, len2003, delta, gdir)
     return tbias

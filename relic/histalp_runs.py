@@ -13,7 +13,7 @@ from oggm.core.climate import compute_ref_t_stars
 from oggm import entity_task, GlacierDirectory
 from oggm.exceptions import InvalidParamsError
 
-from relic.spinup import systematic_spinup
+from relic.spinup import systematic_spinup2
 from relic.preprocessing import merge_pair_dict
 from relic.postprocessing import relative_length_change
 
@@ -82,7 +82,7 @@ def relic_from_climate_data(gdir, ys=None, ye=None, min_ys=None,
                             **kwargs)
 
 
-def spinup_plus_histalp(gdir, meta=None, obs=None, mb_bias=None):
+def spinup_plus_histalp(gdir, meta=None, obs=None, mb_bias=None, runsuffix=''):
     # take care of merged glaciers
     rgi_id = gdir.rgi_id.split('_')[0]
 
@@ -94,7 +94,7 @@ def spinup_plus_histalp(gdir, meta=None, obs=None, mb_bias=None):
     obs_ye = 2014
 
     # --------- SPIN IT UP ---------------
-    tbias = systematic_spinup(gdir, meta)
+    tbias = systematic_spinup2(gdir, meta)
 
     if tbias == -999:
 
@@ -103,7 +103,6 @@ def spinup_plus_histalp(gdir, meta=None, obs=None, mb_bias=None):
                 'spinup': np.nan,
                 'tbias': np.nan, 'tmean': np.nan, 'pmean': np.nan}
         return rval
-
     # --------- GET SPINUP STATE ---------------
     tmp_mod = FileModel(gdir.get_filepath('model_run',
                                           filesuffix='_spinup'))
@@ -113,7 +112,7 @@ def spinup_plus_histalp(gdir, meta=None, obs=None, mb_bias=None):
     try:
         relic_from_climate_data(gdir, ys=meta['first'], ye=obs_ye,
                                 init_model_fls=tmp_mod.fls,
-                                output_filesuffix='_histalp',
+                                output_filesuffix='_histalp' + runsuffix,
                                 mass_balance_bias=mb_bias)
     except RuntimeError as err:
         if 'Glacier exceeds domain boundaries' in err.args[0]:
@@ -123,7 +122,7 @@ def spinup_plus_histalp(gdir, meta=None, obs=None, mb_bias=None):
             raise RuntimeError('other error')
 
     ds1 = xr.open_dataset(gdir.get_filepath('model_diagnostics',
-                                            filesuffix='_histalp'))
+                                            filesuffix='_histalp' + runsuffix))
     ds2 = xr.open_dataset(gdir.get_filepath('model_diagnostics',
                                             filesuffix='_spinup'))
     # store mean temperature and precipitation
@@ -158,7 +157,8 @@ def spinup_plus_histalp(gdir, meta=None, obs=None, mb_bias=None):
         fls = gdir.read_pickle('model_flowlines')
         flix = np.where([fl.rgi_id != rgi_id for fl in fls])[0][-1]
 
-        fmod = FileModel(gdir.get_filepath('model_run', filesuffix='_histalp'))
+        fmod = FileModel(gdir.get_filepath('model_run',
+                                           filesuffix='_histalp' + runsuffix))
         assert fmod.fls[flix].nx == fls[flix].nx, ('filemodel and gdir '
                                                    'flowlines do not match')
         for yr in rval['histalp'].index:
@@ -175,7 +175,7 @@ def spinup_plus_histalp(gdir, meta=None, obs=None, mb_bias=None):
     return rval
 
 
-def multi_parameter_run(paramdict, gdirs, meta, obs, runid=None):
+def multi_parameter_run(paramdict, gdirs, meta, obs, runid=None, runsuffix=''):
     # get us all parameters
     keys = paramdict.keys()
     values = paramdict.values()
@@ -282,7 +282,8 @@ def multi_parameter_run(paramdict, gdirs, meta, obs, runid=None):
         # do the actual simulations
         rval = execute_entity_task(spinup_plus_histalp,
                                    gdirs2sim, meta=meta, obs=obs,
-                                   mb_bias=mbbias
+                                   mb_bias=mbbias,
+                                   runsuffix=runsuffix
                                    )
         # remove possible Nones
         rval = [rl for rl in rval if rl is not None]

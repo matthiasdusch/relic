@@ -640,8 +640,8 @@ def quick_plot_and_hist(glcdict, pout, y_len=5):
         # take care of merged glaciers
         rgi_id = glid.split('_')[0]
 
-        #if rgi_id != 'RGI60-11.03643':
-        #    continue
+        if rgi_id != 'RGI60-11.03643':
+            continue
 
         #if (rgi_id != 'RGI60-11.01450') and (rgi_id != 'RGI60-11.02051') and (rgi_id != 'RGI60-11.01270') and (rgi_id != 'RGI60-11.03643') and (rgi_id != 'RGI60-11.00897'):
         #    #if (rgi_id != 'RGI60-11.02755') and (rgi_id != 'RGI60-11.03646'):
@@ -650,12 +650,12 @@ def quick_plot_and_hist(glcdict, pout, y_len=5):
         fig = plt.figure(figsize=[23, 9])
 
         from matplotlib.gridspec import GridSpec
-        gs = GridSpec(3, 3)  # 2 rows, 3 columns
+        gs = GridSpec(3, 3)  # 3 rows, 3 columns
 
-        ax1 = fig.add_subplot(gs[0:2, :])  # Second row, span all columns
-        ax2 = fig.add_subplot(gs[2, 0])  # First row, first column
-        ax3 = fig.add_subplot(gs[2, 1])  # First row, second column
-        ax4 = fig.add_subplot(gs[2, 2])  # First row, third column
+        ax1 = fig.add_subplot(gs[0:2, :])
+        ax2 = fig.add_subplot(gs[2, 0])
+        ax3 = fig.add_subplot(gs[2, 1])
+        ax4 = fig.add_subplot(gs[2, 2])
 
 
         df.loc[:, 'obs'].plot(ax=ax1, color='k', marker='o',
@@ -793,6 +793,9 @@ def quick_plot_and_hist(glcdict, pout, y_len=5):
         fig.tight_layout()
         fn1 = os.path.join(pout, 'histalp_%s.png' % glid)
         fig.savefig(fn1)
+
+
+
 
 
 
@@ -962,3 +965,133 @@ def quick_params(glcdict, pout):
         fig1.tight_layout()
         fn1 = os.path.join(pout, 'params_%s.png' % glid)
         fig1.savefig(fn1)
+
+
+def past_simulation_and_params(glcdict, pout, y_len=5):
+
+    for glid, df in glcdict.items():
+
+        # take care of merged glaciers
+        rgi_id = glid.split('_')[0]
+
+        #if rgi_id != 'RGI60-11.03643':
+        #    continue
+
+        #if (rgi_id != 'RGI60-11.01450') and (rgi_id != 'RGI60-11.02051') and (rgi_id != 'RGI60-11.01270') and (rgi_id != 'RGI60-11.03643') and (rgi_id != 'RGI60-11.00897'):
+        #    #if (rgi_id != 'RGI60-11.02755') and (rgi_id != 'RGI60-11.03646'):
+        #    continue
+
+        fig = plt.figure(figsize=[23, 8])
+
+        from matplotlib.gridspec import GridSpec
+        gs = GridSpec(1, 4)  # 3 rows, 3 columns
+
+        ax1 = fig.add_subplot(gs[0, 0:3])
+        ax2 = fig.add_subplot(gs[0, 3])
+
+        df.loc[:, 'obs'].plot(ax=ax1, color='k', marker='o',
+                              label='Observed length change')
+
+        # OGGM standard
+        for run in df.columns:
+            if run == 'obs':
+                continue
+            para = ast.literal_eval('{' + run + '}')
+            if ((np.abs(para['prcp_scaling_factor'] - 1.75) < 0.01) and
+                    (para['mbbias'] == 0) and
+                    (para['glena_factor'] == 1)):
+                df.loc[:, run].rolling(y_len, center=True). \
+                    mean().plot(ax=ax1, linewidth=2, color='k',
+                                label='OGGM default parameters')
+                oggmdefault = run
+
+        maes = mae_weighted(df, normalised=False).sort_values()
+
+        from relic.postprocessing import optimize_cov2
+        idx2plot2 = optimize_cov2(df.loc[:, maes.index[:150]], df.loc[:, 'obs'], glid, minuse=5)
+        # idx2plot2 = optimize_cov2(df.loc[:, df.columns != 'obs'], df.loc[:, 'obs'], glid, minuse=5)
+
+        from relic.postprocessing import calc_coverage_2
+
+        ensmean = df.loc[:, idx2plot2].mean(axis=1)
+        ensmeanmean = ensmean.rolling(y_len, center=True).mean()
+        ensstdmean = df.loc[:, idx2plot2].std(axis=1).rolling(y_len, center=True).mean()
+
+        # coverage
+        cov = calc_coverage_2(df, idx2plot2, df['obs'])
+
+        ax1.fill_between(ensmeanmean.index, ensmeanmean - ensstdmean,
+                         ensmeanmean + ensstdmean, color='C0', alpha=0.6)
+
+        # nolbl = df.loc[:, idx2plot2].rolling(y_len, center=True).mean().copy()
+        # nolbl.columns = ['' for i in range(len(nolbl.columns))]
+        # nolbl.plot(ax=ax1, linewidth=0.8, color='C0')
+
+        ax1.plot(0, 0, color='C0', linewidth=10,
+                 label='ensemble mean +/- 1 std')
+
+        # plot ens members
+        ensmeanmean.plot(ax=ax1, linewidth=4.0, color='C1',
+                         label='ensemble mean')
+
+        # reference run (basically min mae)
+        df.loc[:, maes.index[0]].rolling(y_len, center=True).mean(). \
+            plot(ax=ax1, linewidth=3, color='C4',
+                 label='minimum wMAE run')
+
+        name = GLCDICT.get(rgi_id)[2]
+
+        mae_ens = mae_weighted(pd.concat([ensmean, df['obs']], axis=1))[0]
+        mae_best = maes[0]
+
+        ax1.set_title('%s' % name, fontsize=28)
+        ax1.text(1970, -4700, '%d ensemble members  '
+                              '    coverage = %.2f\n'
+                              'wMAE enselbe = %.2f  '
+                              '  wMAE best = %.2f' %
+                 (len(idx2plot2), cov, mae_ens,
+                  mae_best), fontsize=18)
+        ax1.set_ylabel('relative length change [m]', fontsize=26)
+        ax1.set_xlabel('Year', fontsize=26)
+        ax1.set_xlim([1850, 2020])
+        ax1.set_ylim([-3500, 1000])
+        ax1.tick_params(axis='both', which='major', labelsize=22)
+        ax1.grid(True)
+
+        ax1.legend(bbox_to_anchor=(0.0, -0.175), loc='upper left', fontsize=14,
+                   ncol=3)
+
+        # parameter plots
+        from colorspace import sequential_hcl
+        col = sequential_hcl('Blues 3').colors(len(idx2plot2)+3)
+        for i, run in enumerate(idx2plot2):
+            para = ast.literal_eval('{' + run + '}')
+            psf = para['prcp_scaling_factor']
+            psf = (psf - 0.5) / (4 - 0.5)
+            gla = para['glena_factor']
+            gla = (gla - 1) / (4 - 1.0)
+            mbb = para['mbbias']
+            mbb = (mbb - -1400) / (1000 - -1400)
+
+            ax2.plot([1, 2, 3], [psf, gla, mbb], color=col[i], linewidth=2)
+
+        ax2.set_xlabel('calibration parameters', fontsize=20)
+        ax2.set_ylabel('normalized values', fontsize=20)
+        ax2.set_xlim([0.8, 3.2])
+        ax2.set_ylim([-0.1, 1.1])
+        ax2.set_xticks([1, 2, 3])
+        ax2.set_xticklabels(['Psf', 'GlenA', 'MB bias'], fontsize=16)
+        ax2.set_yticks([0, 1])
+        ax2.set_yticklabels([''])
+
+        # fig1.subplots_adjust(right=0.7)
+        fig.tight_layout()
+        fn1 = os.path.join(pout, 'histalp_%s.png' % glid)
+        fig.savefig(fn1)
+
+        used = dict()
+        used['oggmdefault'] = oggmdefault
+        used['minmae'] = idx2plot2[0]
+        used['ensemble'] = idx2plot2
+
+        pickle.dump(used, open(os.path.join(pout, 'runs_%s.p' % glid), 'wb'))
