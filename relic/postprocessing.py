@@ -42,7 +42,7 @@ def mae_weighted(_df):
     return maeall
 
 
-def runs2df(runs, glenamin=0):
+def runs2df(runs):
 
     # get all glaciers
     glcs = []
@@ -50,21 +50,7 @@ def runs2df(runs, glenamin=0):
         glcs += [gl['rgi_id'] for gl in list(run.values())[0]]
     glcs = np.unique(glcs).tolist()
 
-    """
-    # subset
-    glcs = ['RGI60-11.00746',
-            'RGI60-11.00897_merged',
-            'RGI60-11.01270',
-            'RGI60-11.01450_merged',
-            'RGI60-11.01946',
-            'RGI60-11.02051_merged',
-            'RGI60-11.02740',
-            'RGI60-11.03638',
-            'RGI60-11.03643_merged',
-            'RGI60-11.03646']
-    """
-
-# take care of merged ones
+    # take care of merged ones
     rgi_ids = [gl.split('_')[0] for gl in glcs]
 
     meta, data = get_length_observations(rgi_ids)
@@ -83,16 +69,6 @@ def runs2df(runs, glenamin=0):
 
         tbias_series = pd.Series([])
 
-        """
-        if 'XXX_merged' in mrgi:
-            # mid = merged_ids(mrgi)
-
-            _mmeta = meta.loc[meta['RGI_ID'] == mid].copy()
-            _mdata = data.loc[_mmeta.index[0]].copy()
-            dfmerge = pd.DataFrame([], index=np.arange(1850, 2011))
-            dfmerge.loc[_mdata.index, 'obs'] = _mdata
-        """
-
         for nr, run in enumerate(runs):
             rlist = list(run.values())[0]
             try:
@@ -104,44 +80,13 @@ def runs2df(runs, glenamin=0):
                 continue
 
             rkey = list(run.keys())[0]
-            para = ast.literal_eval('{' + rkey + '}')
 
-            if para['glena_factor'] < glenamin:
-                continue
-
-#            if para['glena_factor'] > 3:
-#                continue
-
-            """
-            if para['mbbias'] < -800:
-                continue
-            if para['mbbias'] > 800:
-                continue
-
-            if para['prcp_scaling_factor'] < 1:
-                continue
-            if para['prcp_scaling_factor'] > 3:
-                continue
-            """
-
-            #if not np.isclose(para['prcp_scaling_factor'], 1.75, atol=0.01):
-            #    continue
-
-            df.loc[rdic['rel_dl'].index, rkey] = rdic['rel_dl']
+            df.loc[rdic['rel_dl'].index, rkey] = rdic['rel_dl'].values
 
             tbias_series[rkey] = rdic['tbias']
 
-            """
-            if 'XXX_merged' in glid:
-                dfmerge.loc[rdic['trib_dl'].index, rkey] = rdic['trib_dl']
-            """
-
         glcdict[mrgi] = df
         tbiasdict[mrgi] = tbias_series
-        """
-        if 'XXX_merged' in glid:
-            glcdict[mid] = dfmerge
-        """
 
     return glcdict, tbiasdict
 

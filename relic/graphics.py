@@ -10,7 +10,7 @@ import ast
 import pickle
 import pandas as pd
 
-from relic.postprocessing import mae_weighted, optimize_cov2, calc_coverage_2
+from relic.postprocessing import mae_weighted, optimize_cov, calc_coverage
 from relic.preprocessing import GLCDICT
 
 
@@ -167,9 +167,9 @@ def past_simulation_and_params(glcdict, pout, y_len=5):
                                 label='OGGM default parameters')
                 oggmdefault = run
 
-        maes = mae_weighted(df, normalised=False).sort_values()
+        maes = mae_weighted(df).sort_values()
 
-        idx2plot2 = optimize_cov2(df.loc[:, maes.index[:150]],
+        idx2plot2 = optimize_cov(df.loc[:, maes.index[:150]],
                                   df.loc[:, 'obs'], glid, minuse=5)
         # idx2plot2 = optimize_cov2(df.loc[:, df.columns != 'obs'], df.loc[:, 'obs'], glid, minuse=5)
 
@@ -179,7 +179,7 @@ def past_simulation_and_params(glcdict, pout, y_len=5):
                                                               center=True).mean()
 
         # coverage
-        cov = calc_coverage_2(df, idx2plot2, df['obs'])
+        cov = calc_coverage(df, idx2plot2, df['obs'])
 
         ax1.fill_between(ensmeanmean.index, ensmeanmean - ensstdmean,
                          ensmeanmean + ensstdmean, color='C0', alpha=0.6)

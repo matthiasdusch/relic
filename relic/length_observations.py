@@ -61,6 +61,7 @@ def get_wgms(rgiids, firstyear=1850, reconstruction=False):
                 (rgi == 'RGI60-11.03646') or (rgi == 'RGI60-11.03643')):
             # add reconstruction data
             df = add_observations(df, rgi, firstyear)
+            t0 = df.dropna().index[0]
 
         # get first measurement
         dfmeta.loc[rgi, 'first'] = t0
