@@ -9,8 +9,10 @@ import os
 import ast
 import pickle
 import pandas as pd
+import xarray as xr
 
-from relic.postprocessing import mae_weighted, optimize_cov, calc_coverage
+from relic.postprocessing import (mae_weighted, optimize_cov, calc_coverage,
+                                  relative_length_change)
 from relic.preprocessing import GLCDICT
 
 
@@ -256,3 +258,130 @@ def past_simulation_and_params(glcdict, pout, y_len=5):
         used['ensemble'] = idx2plot2
 
         pickle.dump(used, open(os.path.join(pout, 'runs_%s.p' % glid), 'wb'))
+
+
+def past_simulation_and_commitment(rgi, allobs, allmeta, histalp_storage,
+                                   comit_storage, pout, y_len=5):
+
+    df = pd.DataFrame([], index=np.arange(1850, 2021))
+    df.loc[:, 'obs'] = allobs.loc[rgi.split('_')[0]]
+    meta = allmeta.loc[rgi.split('_')[0]]
+
+    for i in np.arange(999):
+
+        rgipath = os.path.join(histalp_storage, rgi, '{:02d}'.format(i),
+                               rgi[:8], rgi[:11], rgi)
+
+        try:
+            sp = xr.open_dataset(
+                os.path.join(rgipath,
+                             'model_diagnostics_spinup_{:02d}.nc'.format(i)))
+            hi = xr.open_dataset(
+                os.path.join(rgipath,
+                             'model_diagnostics_histalp_{:02d}.nc'.format(i)))
+        except FileNotFoundError:
+            break
+
+        sp = sp.length_m.to_dataframe()['length_m']
+        hi = hi.length_m.to_dataframe()['length_m']
+        # f.loc[:, '{:02d}'.format(i)] = relative_length_change(meta, sp, hi)
+        df.loc[:, i] = relative_length_change(meta, sp, hi)
+
+    # commitment
+    df1999 = pd.DataFrame([], index=np.arange(2015, 2500))
+    df1885 = pd.DataFrame([], index=np.arange(2015, 2500))
+    for i in np.arange(999):
+
+        try:
+            cm99 = xr.open_dataset(
+                os.path.join(comit_storage, rgi,
+                             'model_diagnostics_commitment1999_{:02d}.nc'.
+                             format(i)))
+            cm85 = xr.open_dataset(
+                os.path.join(comit_storage, rgi,
+                             'model_diagnostics_commitment1885_{:02d}.nc'.
+                             format(i)))
+        except FileNotFoundError:
+            break
+
+        cm99 = cm99.length_m.to_dataframe()['length_m']
+        cm99.index = cm99.index + 2015
+        df1999.loc[:, i] = cm99 - cm99.iloc[0] + df.loc[2014, i]
+
+        cm85 = cm85.length_m.to_dataframe()['length_m']
+        cm85.index = cm85.index + 2015
+        df1885.loc[:, i] = cm85 - cm85.iloc[0] + df.loc[2014, i]
+
+    # plot
+    fig, ax1 = plt.subplots(1, figsize=[23, 10])
+
+    ensmean = df.loc[:, df.columns != 'obs'].mean(axis=1)
+    ensmeanmean = ensmean.rolling(5, center=True).mean()
+    ensstdmean = df.loc[:, df.columns != 'obs'].std(axis=1).rolling(1,
+                                                                    center=True).mean()
+    ax1.fill_between(ensmeanmean.index, ensmeanmean - ensstdmean,
+                     ensmeanmean + ensstdmean, color='C0', alpha=0.6)
+
+    #nolbl = df.loc[:, df.columns != 'obs'].rolling(5,
+    #                                               center=True).mean().copy()
+    #nolbl.columns = [' ' for i in range(len(nolbl.columns))]
+    #nolbl.plot(ax=ax1, linewidth=0.8, color='C0')
+
+    ax1.plot(0, 0, color='C0', linewidth=10,
+             label='ensemble mean +/- 1 std')
+    ensmeanmean.plot(ax=ax1, linewidth=4.0, color='C1',
+                     label='ensemble mean')
+
+    # 1999
+    commean = df1999.mean(axis=1)
+    commeanmean = commean.rolling(5, center=True).mean()
+    comstdmean = df1999.std(axis=1).rolling(5, center=True).mean()
+    ax1.fill_between(commeanmean.index, commeanmean - comstdmean,
+                     commeanmean + comstdmean, color='C3', alpha=0.6)
+
+    #nolbl = df1999.rolling(5, center=True).mean().copy()
+    #nolbl.columns = [' ' for i in range(len(nolbl.columns))]
+    #nolbl.plot(ax=ax1, linewidth=0.8, color='C3')
+
+    ax1.plot(0, 0, color='C3', linewidth=10,
+             label='ensemble mean +/- 1 std (1999)')
+    commeanmean.plot(ax=ax1, linewidth=4.0, color='C2',
+                     label='ensemble mean (1999)')
+
+    # 1885
+    commean = df1885.mean(axis=1)
+    commeanmean = commean.rolling(5, center=True).mean()
+    comstdmean = df1885.std(axis=1).rolling(5, center=True).mean()
+    ax1.fill_between(commeanmean.index, commeanmean - comstdmean,
+                     commeanmean + comstdmean, color='C4', alpha=0.6)
+
+    #nolbl = df1885.rolling(5, center=True).mean().copy()
+    #nolbl.columns = [' ' for i in range(len(nolbl.columns))]
+    #nolbl.plot(ax=ax1, linewidth=0.8, color='C4')
+
+    ax1.plot(0, 0, color='C4', linewidth=10,
+             label='ensemble mean +/- 1 std (1885)')
+    commeanmean.plot(ax=ax1, linewidth=4.0, color='C5',
+                     label='ensemble mean (1885)')
+
+    df.obs.plot(ax=ax1, color='k', marker='o',
+                label='Observed length change')
+
+    ax1.set_xlim([1850, 2250])
+    #ax1.set_ylim([-9000, 500])
+
+    name = GLCDICT.get(rgi.split('_')[0])[2]
+    ax1.set_title('%s' % name, fontsize=28)
+
+    ax1.set_ylabel('relative length change [m]', fontsize=26)
+    ax1.set_xlabel('Year', fontsize=26)
+
+    ax1.tick_params(axis='both', which='major', labelsize=22)
+    ax1.grid(True)
+
+    ax1.legend(bbox_to_anchor=(0.0, -0.175), loc='upper left', fontsize=14,
+               ncol=4)
+
+    fig.tight_layout()
+    fn1 = os.path.join(pout, 'commit_%s.png' % rgi)
+    fig.savefig(fn1)
