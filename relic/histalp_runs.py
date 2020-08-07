@@ -2,17 +2,21 @@ import numpy as np
 import xarray as xr
 import logging
 import itertools
+import ast
+import os
+import shutil
 
 from oggm import tasks, cfg
 from oggm.core.flowline import FileModel, robust_model_run
 from oggm.core.massbalance import (MultipleFlowlineMassBalance,
-                                   PastMassBalance)
+                                   PastMassBalance, ConstantMassBalance)
 from oggm.workflow import execute_entity_task, merge_glacier_tasks
 from oggm.core.climate import compute_ref_t_stars
 from oggm import entity_task, GlacierDirectory
 from oggm.exceptions import InvalidParamsError
+from oggm.utils import copy_to_basedir, mkdir, include_patterns
 
-from relic.spinup import systematic_spinup
+from relic.spinup import systematic_spinup, final_spinup
 from relic.preprocessing import merge_pair_dict
 from relic.postprocessing import relative_length_change
 
@@ -63,15 +67,16 @@ def relic_from_climate_data(gdir, ys=None, ye=None, min_ys=None,
                 gdir.write_json(df, 'local_mustar', filesuffix=flsfx)
             # we write this to the local_mustar file so we do not need to
             # pass it on to the MultipleFlowlineMassBalance model
-            mass_balance_bias = None
         else:
             df = gdir.read_json('local_mustar')
-            mass_balance_bias += df['bias']
+            # mass_balance_bias += df['bias']
+            df['bias'] += mass_balance_bias
+            gdir.write_json(df, 'local_mustar')
 
     mb = MultipleFlowlineMassBalance(gdir, mb_model_class=PastMassBalance,
                                      filename=climate_filename,
                                      input_filesuffix=climate_input_filesuffix,
-                                     bias=mass_balance_bias)
+                                     bias=None)
 
     return robust_model_run(gdir, output_filesuffix=output_filesuffix,
                             mb_model=mb, ys=ys, ye=ye,
@@ -285,3 +290,153 @@ def multi_parameter_run(paramdict, gdirs, meta, obs, runid=None, runsuffix=''):
         rval_dict[str(combi)] = rval
 
     return rval_dict
+
+
+def run_ensemble(allgdirs, rgi_id, ensemble, tbiasdict, allmeta,
+                 storedir, runsuffix=''):
+
+    # default glena
+    default_glena = 2.4e-24
+
+    # loop over all combinations
+    for nr, run in enumerate(ensemble):
+
+        pdict = ast.literal_eval('{' + run + '}')
+        cfg.PARAMS['glen_a'] = pdict['glena_factor'] * default_glena
+        cfg.PARAMS['inversion_glen_a'] = pdict['glena_factor'] * default_glena
+        mbbias = pdict['mbbias']
+        cfg.PARAMS['prcp_scaling_factor'] = pdict['prcp_scaling_factor']
+
+        log.info('Current parameter combination: %s' % str(run))
+        log.info('This is combination %d out of %d.' % (nr+1, len(ensemble)))
+
+        # ok, we need the ref_glaciers here for calibration
+        # they should be initialiced so, just recreate them from the directory
+        ref_gdirs = [GlacierDirectory(refid) for
+                     refid in preprocessing.ADDITIONAL_REFERENCE_GLACIERS]
+
+        # do the mass balance calibration
+        compute_ref_t_stars(ref_gdirs + allgdirs)
+        task_list = [tasks.local_t_star,
+                     tasks.mu_star_calibration,
+                     tasks.prepare_for_inversion,
+                     tasks.mass_conservation_inversion,
+                     tasks.filter_inversion_output,
+                     tasks.init_present_time_glacier
+                     ]
+
+        for task in task_list:
+            execute_entity_task(task, allgdirs)
+
+        # check for glaciers to merge:
+        gdirs_merged = []
+        gdirs2sim = allgdirs.copy()
+        for gid in allmeta.index:
+            merg = merge_pair_dict(gid)
+            if merg is not None:
+                # main and tributary glacier
+                gd2merge = [gd for gd in allgdirs if gd.rgi_id in [gid] + merg[0]]
+
+                # actual merge task
+                log.warning('DeprecationWarning: If downloadlink is updated ' +
+                            'to gdirs_v1.2, remove filename kwarg')
+                gdir_merged = merge_glacier_tasks(gd2merge, gid,
+                                                  buffer=merg[1],
+                                                  filename='climate_monthly')
+
+                # remove the entity glaciers from the simulation list
+                gdirs2sim = [gd for gd in gdirs2sim if
+                             gd.rgi_id not in [gid] + merg[0]]
+
+                gdirs_merged.append(gdir_merged)
+
+        # add merged glaciers to the left over entity glaciers
+        gdirs2sim += gdirs_merged
+
+        # now only select the 1 glacier
+        gdir = [gd for gd in gdirs2sim if gd.rgi_id == rgi_id][0]
+        rgi_id0 = rgi_id.split('_')[0]
+        meta = allmeta.loc[rgi_id0].copy()
+
+        # do the actual simulations
+
+        # spinup
+        fls = gdir.read_pickle('model_flowlines')
+        delta = fls[-1].dx_meter
+        len2003 = fls[-1].length_m
+        dl = -meta['dL2003']
+        # mass balance model
+        log.warning('DeprecationWarning: If downloadlink is updated to ' +
+                    'gdirs_v1.2 remove filename kwarg')
+        mb = MultipleFlowlineMassBalance(gdir, fls=fls,
+                                         mb_model_class=ConstantMassBalance,
+                                         filename='climate_monthly')
+
+        try:
+            final_spinup(tbiasdict[run], mb, fls, dl, len2003, delta, gdir,
+                         filesuffix='spinup_{:02d}'.format(nr))
+        except RuntimeError:
+            log.warning('Delta > 1x fl dx ({:.2f}), using 2x'.format(delta))
+            final_spinup(tbiasdict[run], mb, fls, dl, len2003, delta*2, gdir,
+                         filesuffix='spinup_{:02d}'.format(nr))
+
+        # histalp
+        # --------- GET SPINUP STATE ---------------
+        tmp_mod = FileModel(
+            gdir.get_filepath('model_run',
+                              filesuffix='spinup_{:02d}'.format(nr)))
+
+        tmp_mod.run_until(tmp_mod.last_yr)
+
+        # --------- HIST IT DOWN ---------------
+        histrunsuffix = 'histalp{}_{:02d}'.format(runsuffix, nr)
+        relic_from_climate_data(gdir, ys=meta['first'], ye=2014,
+                                init_model_fls=tmp_mod.fls,
+                                output_filesuffix=histrunsuffix,
+                                mass_balance_bias=mbbias)
+
+        # save the calibration parameter to the climate info file
+        out = gdir.get_climate_info()
+        out['ensemble_calibration'] = pdict
+        gdir.write_json(out, 'climate_info')
+
+        # copy stuff to storage
+        basedir = os.path.join(storedir, rgi_id)
+        ensdir = os.path.join(basedir, '{:02d}'.format(nr))
+        mkdir(ensdir, reset=True)
+
+        deep_path = os.path.join(ensdir, rgi_id[:8], rgi_id[:11], rgi_id)
+
+        # copy whole GDir
+        copy_to_basedir(gdir, base_dir=ensdir, setup='run')
+
+        # copy run results
+        fn1 = 'model_diagnostics_spinup_{:02d}.nc'.format(nr)
+        shutil.copyfile(
+            gdir.get_filepath('model_diagnostics',
+                              filesuffix='spinup_{:02d}'.format(nr)),
+            os.path.join(deep_path, fn1))
+
+        fn2 = 'model_diagnostics_{}.nc'.format(histrunsuffix)
+        shutil.copyfile(
+            gdir.get_filepath('model_diagnostics', filesuffix=histrunsuffix),
+            os.path.join(deep_path, fn2))
+
+        fn3 = 'model_run_spinup_{:02d}.nc'.format(nr)
+        shutil.copyfile(
+            gdir.get_filepath('model_run',
+                              filesuffix='spinup_{:02d}'.format(nr)),
+            os.path.join(deep_path, fn3))
+
+        fn4 = 'model_run_{}.nc'.format(histrunsuffix)
+        shutil.copyfile(
+            gdir.get_filepath('model_run', filesuffix=histrunsuffix),
+            os.path.join(deep_path, fn4))
+
+        log.warning('DeprecationWarning: If downloadlink is updated to ' +
+                    'gdirs_v1.2 remove this copyfile:')
+        # copy (old) climate monthly files which
+        for fn in os.listdir(gdir.dir):
+            if 'climate_monthly' in fn:
+                shutil.copyfile(os.path.join(gdir.dir, fn),
+                                os.path.join(deep_path, fn))

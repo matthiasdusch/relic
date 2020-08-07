@@ -42,7 +42,7 @@ def mae_weighted(_df):
     return maeall
 
 
-def runs2df(runs):
+def runs2df(runs, skip_bossons_mdg=False):
 
     # get all glaciers
     glcs = []
@@ -63,6 +63,9 @@ def runs2df(runs):
     for rgi, mrgi in zip(rgi_ids, glcs):
         _meta = meta.loc[rgi].copy()
         _data = data.loc[rgi].copy()
+
+        if skip_bossons_mdg and ((rgi == 'RGI60-11.03646') or (rgi == 'RGI60-11.03643')):
+            continue
 
         df = pd.DataFrame([], index=np.arange(1850, 2020))
         df.loc[_data.index, 'obs'] = _data
