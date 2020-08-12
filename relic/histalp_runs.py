@@ -7,7 +7,8 @@ import os
 import shutil
 
 from oggm import tasks, cfg
-from oggm.core.flowline import FileModel, robust_model_run
+from oggm.core.flowline import (FileModel, robust_model_run,
+                                run_from_climate_data)
 from oggm.core.massbalance import (MultipleFlowlineMassBalance,
                                    PastMassBalance, ConstantMassBalance)
 from oggm.workflow import execute_entity_task, merge_glacier_tasks
@@ -111,11 +112,27 @@ def spinup_plus_histalp(gdir, meta=None, mb_bias=None, runsuffix=''):
     tmp_mod.run_until(tmp_mod.last_yr)
 
     # --------- HIST IT DOWN ---------------
+    # take care of mass balance bias:
+    if '_merged' in gdir.rgi_id:
+        fls = gdir.read_pickle('model_flowlines')
+        flids = np.unique([fl.rgi_id for fl in fls])
+        for fl in flids:
+            flsfx = '_' + fl
+            df = gdir.read_json('local_mustar', filesuffix=flsfx)
+            df['bias'] += mb_bias
+            gdir.write_json(df, 'local_mustar', filesuffix=flsfx)
+        # we write this to the local_mustar file so we do not need to
+        # pass it on to the MultipleFlowlineMassBalance model
+    else:
+        df = gdir.read_json('local_mustar')
+        # mass_balance_bias += df['bias']
+        df['bias'] += mb_bias
+        gdir.write_json(df, 'local_mustar')
+    # now actual simulation
     try:
-        relic_from_climate_data(gdir, ys=meta['first'], ye=obs_ye,
-                                init_model_fls=tmp_mod.fls,
-                                output_filesuffix='_histalp' + runsuffix,
-                                mass_balance_bias=mb_bias)
+        run_from_climate_data(gdir, ys=meta['first'], ye=obs_ye,
+                              init_model_fls=tmp_mod.fls,
+                              output_filesuffix='_histalp' + runsuffix)
     except RuntimeError as err:
         if 'Glacier exceeds domain boundaries' in err.args[0]:
             log.info('(%s) histalp run exceeded domain bounds' % gdir.rgi_id)
@@ -389,11 +406,30 @@ def run_ensemble(allgdirs, rgi_id, ensemble, tbiasdict, allmeta,
         tmp_mod.run_until(tmp_mod.last_yr)
 
         # --------- HIST IT DOWN ---------------
+        # take care of mass balance bias
+        # take care of mass balance bias:
+        if '_merged' in gdir.rgi_id:
+            fls = gdir.read_pickle('model_flowlines')
+            flids = np.unique([fl.rgi_id for fl in fls])
+            for fl in flids:
+                flsfx = '_' + fl
+                df = gdir.read_json('local_mustar', filesuffix=flsfx)
+                df['bias'] += mbbias
+                gdir.write_json(df, 'local_mustar', filesuffix=flsfx)
+            # we write this to the local_mustar file so we do not need to
+            # pass it on to the MultipleFlowlineMassBalance model
+        else:
+            df = gdir.read_json('local_mustar')
+            # mass_balance_bias += df['bias']
+            df['bias'] += mbbias
+            gdir.write_json(df, 'local_mustar')
+
         histrunsuffix = 'histalp{}_{:02d}'.format(runsuffix, nr)
-        relic_from_climate_data(gdir, ys=meta['first'], ye=2014,
-                                init_model_fls=tmp_mod.fls,
-                                output_filesuffix=histrunsuffix,
-                                mass_balance_bias=mbbias)
+
+        # now actual simulation
+        run_from_climate_data(gdir, ys=meta['first'], ye=2014,
+                              init_model_fls=tmp_mod.fls,
+                              output_filesuffix=histrunsuffix)
 
         # save the calibration parameter to the climate info file
         out = gdir.get_climate_info()
