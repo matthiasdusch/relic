@@ -262,10 +262,11 @@ def past_simulation_and_params(glcdict, pout, y_len=5):
 
 def past_simulation_and_commitment(rgi, allobs, allmeta, histalp_storage,
                                    comit_storage, pout, y_len=5):
-
-    df = pd.DataFrame([], index=np.arange(1850, 2021))
-    df.loc[:, 'obs'] = allobs.loc[rgi.split('_')[0]]
+    obs = allobs.loc[rgi.split('_')[0]]
     meta = allmeta.loc[rgi.split('_')[0]]
+
+    df99 = pd.DataFrame([], index=np.arange(1850, 2500))
+    df85 = pd.DataFrame([], index=np.arange(1850, 2500))
 
     for i in np.arange(999):
 
@@ -284,12 +285,10 @@ def past_simulation_and_commitment(rgi, allobs, allmeta, histalp_storage,
 
         sp = sp.length_m.to_dataframe()['length_m']
         hi = hi.length_m.to_dataframe()['length_m']
-        # f.loc[:, '{:02d}'.format(i)] = relative_length_change(meta, sp, hi)
-        df.loc[:, i] = relative_length_change(meta, sp, hi)
+        df99.loc[:, i] = relative_length_change(meta, sp, hi)
+        df85.loc[:, i] = relative_length_change(meta, sp, hi)
 
     # commitment
-    df1999 = pd.DataFrame([], index=np.arange(2015, 2500))
-    df1885 = pd.DataFrame([], index=np.arange(2015, 2500))
     for i in np.arange(999):
 
         try:
@@ -305,70 +304,119 @@ def past_simulation_and_commitment(rgi, allobs, allmeta, histalp_storage,
             break
 
         cm99 = cm99.length_m.to_dataframe()['length_m']
-        cm99.index = cm99.index + 2015
-        df1999.loc[:, i] = cm99 - cm99.iloc[0] + df.loc[2014, i]
+        cm99.index = cm99.index + 2014
+        df99.loc[2015:, i] =\
+            (cm99 - cm99.iloc[0] + df99.loc[2014, i]).loc[2015:]
 
         cm85 = cm85.length_m.to_dataframe()['length_m']
-        cm85.index = cm85.index + 2015
-        df1885.loc[:, i] = cm85 - cm85.iloc[0] + df.loc[2014, i]
+        cm85.index = cm85.index + 2014
+        df85.loc[2015:, i] =\
+            (cm85 - cm85.iloc[0] + df85.loc[2014, i]).loc[2015:]
+
+    # #########
+    # oggm default
+    od = pd.DataFrame([], index=np.arange(1850, 2500))
+    rgipath = os.path.join('/home/matthias/length_change_1850/storage/',
+                           'oggmdefault', 'oggmdefault',
+                           rgi, '00',
+                           rgi[:8], rgi[:11], rgi)
+
+    sp = xr.open_dataset(
+        os.path.join(rgipath, 'model_diagnostics_spinup_00.nc'))
+    hi = xr.open_dataset(
+        os.path.join(rgipath, 'model_diagnostics_histalp_00.nc'))
+
+    sp = sp.length_m.to_dataframe()['length_m']
+    hi = hi.length_m.to_dataframe()['length_m']
+    od.loc[:, '1999'] = relative_length_change(meta, sp, hi)
+    od.loc[:, '1885'] = relative_length_change(meta, sp, hi)
+    cm99 = xr.open_dataset(
+        os.path.join('/home/matthias/length_change_1850/storage/',
+                     'oggmdefault', 'oggmdefault', 'commitment', rgi,
+                     'model_diagnostics_commitment1999_00.nc'))
+    cm85 = xr.open_dataset(
+        os.path.join('/home/matthias/length_change_1850/storage/',
+                     'oggmdefault', 'oggmdefault', 'commitment', rgi,
+                     'model_diagnostics_commitment1885_00.nc'))
+
+    cm99 = cm99.length_m.to_dataframe()['length_m']
+    cm99.index = cm99.index + 2014
+    od.loc[2015:, '1999'] =\
+        (cm99 - cm99.iloc[0] + od.loc[2014, '1999']).loc[2015:]
+
+    cm85 = cm85.length_m.to_dataframe()['length_m']
+    cm85.index = cm85.index + 2014
+    od.loc[2015:, '1885'] =\
+        (cm85 - cm85.iloc[0] + od.loc[2014, '1885']).loc[2015:]
+    # ###########################
 
     # plot
     fig, ax1 = plt.subplots(1, figsize=[23, 10])
 
-    ensmean = df.loc[:, df.columns != 'obs'].mean(axis=1)
-    ensmeanmean = ensmean.rolling(5, center=True).mean()
-    ensstdmean = df.loc[:, df.columns != 'obs'].std(axis=1).rolling(1,
-                                                                    center=True).mean()
-    ax1.fill_between(ensmeanmean.index, ensmeanmean - ensstdmean,
-                     ensmeanmean + ensstdmean, color='C0', alpha=0.6)
+    obs.plot(ax=ax1, color='k', marker='o',
+             label='Observed length change')
 
-    #nolbl = df.loc[:, df.columns != 'obs'].rolling(5,
-    #                                               center=True).mean().copy()
-    #nolbl.columns = [' ' for i in range(len(nolbl.columns))]
-    #nolbl.plot(ax=ax1, linewidth=0.8, color='C0')
+    # default
+    od = od.rolling(y_len, center=True).mean()
+    od.loc[:2015, '1885'].plot(ax=ax1, linewidth=2.0, color='k',
+                               label='OGGM default HISTALP')
+    od.loc[2015:, '1999'].plot(ax=ax1, linewidth=2.0, color='C3',
+                               label='OGGM default 1999')
+    od.loc[2015:, '1885'].plot(ax=ax1, linewidth=2.0, color='C4',
+                               label='OGGM default 1885')
+
+
+    # past
+    ensmean = df99.mean(axis=1)
+    ensmeanmean = ensmean.rolling(y_len, center=True).mean()
+    ensstdmean = df99.std(axis=1).rolling(y_len, center=True).mean()
+
+    ax1.fill_between(ensmeanmean.loc[:2015].index,
+                     ensmeanmean.loc[:2015] - ensstdmean.loc[:2015],
+                     ensmeanmean.loc[:2015] + ensstdmean.loc[:2015],
+                     color='C0', alpha=0.6)
 
     ax1.plot(0, 0, color='C0', linewidth=10,
              label='ensemble mean +/- 1 std')
-    ensmeanmean.plot(ax=ax1, linewidth=4.0, color='C1',
-                     label='ensemble mean')
+    ensmeanmean.loc[:2015].plot(ax=ax1, linewidth=4.0, color='C1',
+                                label='ensemble mean')
 
     # 1999
-    commean = df1999.mean(axis=1)
-    commeanmean = commean.rolling(5, center=True).mean()
-    comstdmean = df1999.std(axis=1).rolling(5, center=True).mean()
-    ax1.fill_between(commeanmean.index, commeanmean - comstdmean,
-                     commeanmean + comstdmean, color='C3', alpha=0.6)
-
-    #nolbl = df1999.rolling(5, center=True).mean().copy()
-    #nolbl.columns = [' ' for i in range(len(nolbl.columns))]
-    #nolbl.plot(ax=ax1, linewidth=0.8, color='C3')
+    ax1.fill_between(ensmeanmean.loc[2015:].index,
+                     ensmeanmean.loc[2015:] - ensstdmean.loc[2015:],
+                     ensmeanmean.loc[2015:] + ensstdmean.loc[2015:],
+                     color='C3', alpha=0.6)
 
     ax1.plot(0, 0, color='C3', linewidth=10,
              label='ensemble mean +/- 1 std (1999)')
-    commeanmean.plot(ax=ax1, linewidth=4.0, color='C2',
-                     label='ensemble mean (1999)')
+    ensmeanmean.loc[2015:].plot(ax=ax1, linewidth=4.0, color='C2',
+                                label='ensemble mean (1999)')
 
     # 1885
-    commean = df1885.mean(axis=1)
-    commeanmean = commean.rolling(5, center=True).mean()
-    comstdmean = df1885.std(axis=1).rolling(5, center=True).mean()
-    ax1.fill_between(commeanmean.index, commeanmean - comstdmean,
-                     commeanmean + comstdmean, color='C4', alpha=0.6)
-
-    #nolbl = df1885.rolling(5, center=True).mean().copy()
-    #nolbl.columns = [' ' for i in range(len(nolbl.columns))]
-    #nolbl.plot(ax=ax1, linewidth=0.8, color='C4')
+    ensmean = df85.mean(axis=1)
+    ensmeanmean = ensmean.rolling(y_len, center=True).mean()
+    ensstdmean = df85.std(axis=1).rolling(y_len, center=True).mean()
+    ax1.fill_between(ensmeanmean.loc[2015:].index,
+                     ensmeanmean.loc[2015:] - ensstdmean.loc[2015:],
+                     ensmeanmean.loc[2015:] + ensstdmean.loc[2015:],
+                     color='C4', alpha=0.6)
 
     ax1.plot(0, 0, color='C4', linewidth=10,
              label='ensemble mean +/- 1 std (1885)')
-    commeanmean.plot(ax=ax1, linewidth=4.0, color='C5',
-                     label='ensemble mean (1885)')
+    ensmeanmean.loc[2015:].plot(ax=ax1, linewidth=4.0, color='C5',
+                                label='ensemble mean (1885)')
 
-    df.obs.plot(ax=ax1, color='k', marker='o',
-                label='Observed length change')
+    prelength = ensmeanmean.dropna().iloc[-30:]
+    ax1.plot(df85.index, np.ones(len(df85)) * prelength.mean(), 'y-',
+             linewidth=2, label='1870-1900 equilibrium length')
+    #ax1.plot(prelength.index, np.ones(30)*prelength.mean(), 'k-', linewidth=2)
+    #ax1.plot(np.arange(2000, 2015), np.ones(15) * prelength.mean(), 'k-',
+    #         linewidth=2,)
 
-    ax1.set_xlim([1850, 2250])
-    #ax1.set_ylim([-9000, 500])
+    ylim = ax1.get_ylim()
+    ax1.plot([2015, 2015], ylim, 'k-', linewidth=2)
+    ax1.set_xlim([1850, 2314])
+    ax1.set_ylim(ylim)
 
     name = GLCDICT.get(rgi.split('_')[0])[2]
     ax1.set_title('%s' % name, fontsize=28)
@@ -377,11 +425,95 @@ def past_simulation_and_commitment(rgi, allobs, allmeta, histalp_storage,
     ax1.set_xlabel('Year', fontsize=26)
 
     ax1.tick_params(axis='both', which='major', labelsize=22)
+    ax1.set_xticks([1900, 2000, 2114, 2214, 2314])
+    ax1.set_xticklabels(['1900', '2000', '100', '200', '300'])
     ax1.grid(True)
 
-    ax1.legend(bbox_to_anchor=(0.0, -0.175), loc='upper left', fontsize=14,
-               ncol=4)
+    ax1.legend(bbox_to_anchor=(-0.08, -0.175), loc='upper left', fontsize=14,
+               ncol=6)
 
     fig.tight_layout()
     fn1 = os.path.join(pout, 'commit_%s.png' % rgi)
+    fig.savefig(fn1)
+
+
+def past_simulation_and_projection(rgi, allobs, allmeta, histalp_storage,
+                                   proj_storage, pout, y_len=5):
+    obs = allobs.loc[rgi.split('_')[0]]
+    meta = allmeta.loc[rgi.split('_')[0]]
+
+    dfall = pd.DataFrame([], index=np.arange(1850, 2101))
+
+    for rcp in ['rcp26', 'rcp45', 'rcp60', 'rcp85']:
+        dfrcp = pd.DataFrame([], index=np.arange(1850, 2101))
+
+        for i in np.arange(999):
+
+            rgipath = os.path.join(histalp_storage, rgi, '{:02d}'.format(i),
+                                   rgi[:8], rgi[:11], rgi)
+
+            try:
+                sp = xr.open_dataset(
+                    os.path.join(rgipath,
+                                 'model_diagnostics_spinup_{:02d}.nc'.format(i)))
+                hi = xr.open_dataset(
+                    os.path.join(rgipath,
+                                 'model_diagnostics_histalp_{:02d}.nc'.format(i)))
+            except FileNotFoundError:
+                break
+
+            sp = sp.length_m.to_dataframe()['length_m']
+            hi = hi.length_m.to_dataframe()['length_m']
+            dfrcp.loc[:, i] = relative_length_change(meta, sp, hi)
+
+        # projection
+        for i in np.arange(999):
+
+            try:
+                cm = xr.open_dataset(
+                    os.path.join(proj_storage, rgi,
+                                 'model_diagnostics_CCSM4_{}_{:02d}.nc'.
+                                 format(rcp, i)))
+            except FileNotFoundError:
+                break
+
+            cm = cm.length_m.to_dataframe()['length_m']
+            dfrcp.loc[2015:, i] =\
+                (cm - cm.iloc[0] + dfrcp.loc[2014, i]).loc[2015:]
+
+        ensmean = dfrcp.mean(axis=1)
+        ensmeanmean = ensmean.rolling(y_len, center=True).mean()
+        dfall.loc[:, rcp] = ensmeanmean
+
+    # plot
+    fig, ax1 = plt.subplots(1, figsize=[23, 10])
+
+    obs.plot(ax=ax1, color='k', marker='o',
+             label='Observed length change')
+
+    # past
+
+    dfall.plot(ax=ax1, linewidth=4.0)
+
+    ylim = ax1.get_ylim()
+    ax1.plot([2015, 2015], ylim, 'k-', linewidth=2)
+    ax1.set_xlim([1850, 2314])
+    ax1.set_ylim(ylim)
+
+    name = GLCDICT.get(rgi.split('_')[0])[2]
+    ax1.set_title('%s' % name, fontsize=28)
+
+    ax1.set_ylabel('relative length change [m]', fontsize=26)
+    ax1.set_xlabel('Year', fontsize=26)
+
+    ax1.tick_params(axis='both', which='major', labelsize=22)
+    ax1.set_xticks([1900, 2000, 2114, 2214, 2314])
+    ax1.set_xticklabels(['1900', '2000', '100', '200', '300'])
+    ax1.grid(True)
+
+    ax1.legend(bbox_to_anchor=(-0.08, -0.175), loc='upper left', fontsize=14,
+               ncol=6)
+
+    fig.tight_layout()
+    fn1 = os.path.join(pout, 'proj_%s.png' % rgi)
     fig.savefig(fn1)
