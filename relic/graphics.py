@@ -184,17 +184,17 @@ def past_simulation_and_params(glcdict, pout, y_len=5):
         cov = calc_coverage(df, idx2plot2, df['obs'])
 
         ax1.fill_between(ensmeanmean.index, ensmeanmean - ensstdmean,
-                         ensmeanmean + ensstdmean, color='C0', alpha=0.6)
+                         ensmeanmean + ensstdmean, color='C0', alpha=0.5)
 
         # nolbl = df.loc[:, idx2plot2].rolling(y_len, center=True).mean().copy()
         # nolbl.columns = ['' for i in range(len(nolbl.columns))]
         # nolbl.plot(ax=ax1, linewidth=0.8, color='C0')
 
         ax1.plot(0, 0, color='C0', linewidth=10,
-                 label='ensemble mean +/- 1 std')
+                 label='ensemble mean +/- 1 std', alpha=0.5)
 
         # plot ens members
-        ensmeanmean.plot(ax=ax1, linewidth=4.0, color='C1',
+        ensmeanmean.plot(ax=ax1, linewidth=4.0, color='C0',
                          label='ensemble mean')
 
         # reference run (basically min mae)
@@ -362,7 +362,7 @@ def past_simulation_and_commitment(rgi, allobs, allmeta, histalp_storage,
                                label='OGGM default HISTALP')
     od.loc[2015:, '1999'].plot(ax=ax1, linewidth=2.0, color='C3',
                                label='OGGM default 1999')
-    od.loc[2015:, '1885'].plot(ax=ax1, linewidth=2.0, color='C4',
+    od.loc[2015:, '1885'].plot(ax=ax1, linewidth=2.0, color='C2',
                                label='OGGM default 1885')
 
 
@@ -374,22 +374,22 @@ def past_simulation_and_commitment(rgi, allobs, allmeta, histalp_storage,
     ax1.fill_between(ensmeanmean.loc[:2015].index,
                      ensmeanmean.loc[:2015] - ensstdmean.loc[:2015],
                      ensmeanmean.loc[:2015] + ensstdmean.loc[:2015],
-                     color='C0', alpha=0.6)
+                     color='C0', alpha=0.5)
 
     ax1.plot(0, 0, color='C0', linewidth=10,
-             label='ensemble mean +/- 1 std')
-    ensmeanmean.loc[:2015].plot(ax=ax1, linewidth=4.0, color='C1',
+             label='ensemble mean +/- 1 std', alpha=0.5)
+    ensmeanmean.loc[:2015].plot(ax=ax1, linewidth=4.0, color='C0',
                                 label='ensemble mean')
 
     # 1999
     ax1.fill_between(ensmeanmean.loc[2015:].index,
                      ensmeanmean.loc[2015:] - ensstdmean.loc[2015:],
                      ensmeanmean.loc[2015:] + ensstdmean.loc[2015:],
-                     color='C3', alpha=0.6)
+                     color='C3', alpha=0.5)
 
     ax1.plot(0, 0, color='C3', linewidth=10,
-             label='ensemble mean +/- 1 std (1999)')
-    ensmeanmean.loc[2015:].plot(ax=ax1, linewidth=4.0, color='C2',
+             label='ensemble mean +/- 1 std (1999)', alpha=0.5)
+    ensmeanmean.loc[2015:].plot(ax=ax1, linewidth=4.0, color='C3',
                                 label='ensemble mean (1999)')
 
     # 1885
@@ -399,11 +399,11 @@ def past_simulation_and_commitment(rgi, allobs, allmeta, histalp_storage,
     ax1.fill_between(ensmeanmean.loc[2015:].index,
                      ensmeanmean.loc[2015:] - ensstdmean.loc[2015:],
                      ensmeanmean.loc[2015:] + ensstdmean.loc[2015:],
-                     color='C4', alpha=0.6)
+                     color='C2', alpha=0.5)
 
-    ax1.plot(0, 0, color='C4', linewidth=10,
-             label='ensemble mean +/- 1 std (1885)')
-    ensmeanmean.loc[2015:].plot(ax=ax1, linewidth=4.0, color='C5',
+    ax1.plot(0, 0, color='C2', linewidth=10,
+             label='ensemble mean +/- 1 std (1885)', alpha=0.5)
+    ensmeanmean.loc[2015:].plot(ax=ax1, linewidth=4.0, color='C2',
                                 label='ensemble mean (1885)')
 
     prelength = ensmeanmean.dropna().iloc[-30:]
@@ -443,6 +443,7 @@ def past_simulation_and_projection(rgi, allobs, allmeta, histalp_storage,
     meta = allmeta.loc[rgi.split('_')[0]]
 
     dfall = pd.DataFrame([], index=np.arange(1850, 2101))
+    dfallstd = pd.DataFrame([], index=np.arange(1850, 2101))
 
     for rcp in ['rcp26', 'rcp45', 'rcp60', 'rcp85']:
         dfrcp = pd.DataFrame([], index=np.arange(1850, 2101))
@@ -482,8 +483,9 @@ def past_simulation_and_projection(rgi, allobs, allmeta, histalp_storage,
                 (cm - cm.iloc[0] + dfrcp.loc[2014, i]).loc[2015:]
 
         ensmean = dfrcp.mean(axis=1)
-        ensmeanmean = ensmean.rolling(y_len, center=True).mean()
-        dfall.loc[:, rcp] = ensmeanmean
+        dfall.loc[:, rcp] = ensmean.rolling(y_len, center=True).mean()
+        dfallstd.loc[:, rcp] = dfrcp.std(axis=1).\
+            rolling(y_len, center=True).mean()
 
     # plot
     fig, ax1 = plt.subplots(1, figsize=[23, 10])
@@ -492,12 +494,46 @@ def past_simulation_and_projection(rgi, allobs, allmeta, histalp_storage,
              label='Observed length change')
 
     # past
+    ax1.fill_between(dfall.loc[:2015, rcp].index,
+                     dfall.loc[:2015, rcp] - dfallstd.loc[:2015, rcp],
+                     dfall.loc[:2015, rcp] + dfallstd.loc[:2015, rcp],
+                     color='C0', alpha=0.5)
+    ax1.plot(0, 0, color='C0', linewidth=10,
+             label='ensemble mean +/- 1 std', alpha=0.5)
+    dfall.loc[:2015, rcp].plot(ax=ax1, linewidth=4.0, color='C0',
+                               label='ensemble mean')
 
-    dfall.plot(ax=ax1, linewidth=4.0)
+    # projections
+    # rcp26
+    ax1.fill_between(dfall.loc[2015:, 'rcp26'].index,
+                     dfall.loc[2015:, 'rcp26'] - dfallstd.loc[2015:, 'rcp26'],
+                     dfall.loc[2015:, 'rcp26'] + dfallstd.loc[2015:, 'rcp26'],
+                     color='C2', alpha=0.5)
+    ax1.plot(0, 0, color='C2', linewidth=10,
+             label='rcp26 ensemble mean +/- 1 std', alpha=0.5)
+    dfall.loc[2015:, 'rcp26'].plot(ax=ax1, linewidth=4.0, color='C2',
+                                   label='rcp26 ensemble mean')
+
+    # rcp45
+    dfall.loc[2015:, 'rcp45'].plot(ax=ax1, linewidth=4.0, color='C1',
+                                   label='rcp45 ensemble mean')
+    # rcp60
+    dfall.loc[2015:, 'rcp60'].plot(ax=ax1, linewidth=4.0, color='C4',
+                                   label='rcp60 ensemble mean')
+
+    # rcp85
+    ax1.fill_between(dfall.loc[2015:, 'rcp85'].index,
+                     dfall.loc[2015:, 'rcp85'] - dfallstd.loc[2015:, 'rcp85'],
+                     dfall.loc[2015:, 'rcp85'] + dfallstd.loc[2015:, 'rcp85'],
+                     color='C3', alpha=0.5)
+    ax1.plot(0, 0, color='C3', linewidth=10,
+             label='rcp85 ensemble mean +/- 1 std', alpha=0.5)
+    dfall.loc[2015:, 'rcp85'].plot(ax=ax1, linewidth=4.0, color='C3',
+                                   label='rcp85 ensemble mean')
 
     ylim = ax1.get_ylim()
     ax1.plot([2015, 2015], ylim, 'k-', linewidth=2)
-    ax1.set_xlim([1850, 2314])
+    ax1.set_xlim([1850, 2100])
     ax1.set_ylim(ylim)
 
     name = GLCDICT.get(rgi.split('_')[0])[2]
@@ -507,8 +543,8 @@ def past_simulation_and_projection(rgi, allobs, allmeta, histalp_storage,
     ax1.set_xlabel('Year', fontsize=26)
 
     ax1.tick_params(axis='both', which='major', labelsize=22)
-    ax1.set_xticks([1900, 2000, 2114, 2214, 2314])
-    ax1.set_xticklabels(['1900', '2000', '100', '200', '300'])
+    #ax1.set_xticks([1900, 2000, 2114, 2214, 2314])
+    #ax1.set_xticklabels(['1900', '2000', '100', '200', '300'])
     ax1.grid(True)
 
     ax1.legend(bbox_to_anchor=(-0.08, -0.175), loc='upper left', fontsize=14,
