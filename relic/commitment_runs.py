@@ -4,7 +4,7 @@ import numpy as np
 import shutil
 import logging
 
-from oggm import cfg, utils, GlacierDirectory, entity_task
+from oggm import cfg, GlacierDirectory
 from oggm.core.flowline import FileModel, robust_model_run
 from oggm.core.massbalance import (MultipleFlowlineMassBalance,
                                    RandomMassBalance)
@@ -66,3 +66,10 @@ def run_and_store_from_disk(rgi, histalp_storage, commit_storage, y0=1999,
                               filesuffix='commitment{:04d}_{:02d}'.format(
                                   y0, i)),
             os.path.join(commit_storage, fn1))
+
+        fn4 = 'model_run_commitment{:04d}_{:02d}.nc'.format(y0, i)
+        shutil.copyfile(
+            gdir.get_filepath('model_run',
+                              filesuffix='commitment{:04d}_{:02d}'.format(
+                                  y0, i)),
+            os.path.join(commit_storage, fn4))

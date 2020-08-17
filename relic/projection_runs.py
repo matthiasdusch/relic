@@ -7,10 +7,7 @@ import logging
 from oggm import cfg, utils, GlacierDirectory, tasks
 from oggm.core import gcm_climate
 from oggm.workflow import init_glacier_regions, execute_entity_task
-from oggm.core.flowline import (FileModel, robust_model_run,
-                                run_from_climate_data)
-from oggm.core.massbalance import (MultipleFlowlineMassBalance,
-                                   RandomMassBalance)
+from oggm.core.flowline import FileModel, run_from_climate_data
 
 from relic.preprocessing import merge_pair_dict
 
@@ -88,6 +85,12 @@ def run_and_store_from_disk(rgi, histalp_storage, storage):
                 gdir.get_filepath('model_diagnostics',
                                   filesuffix=rid_out),
                 os.path.join(storage, fn1))
+
+            fn4 = 'model_run{}.nc'.format(rid_out)
+            shutil.copyfile(
+                gdir.get_filepath('model_run',
+                                  filesuffix=rid_out),
+                os.path.join(storage, fn4))
 
 
 def process_cmip_for_merged_glacier(gdir, filesuffix, ft, fp):
