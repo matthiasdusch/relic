@@ -313,6 +313,7 @@ def past_simulation_and_commitment(rgi, allobs, allmeta, histalp_storage,
         df85.loc[2015:, i] =\
             (cm85 - cm85.iloc[0] + df85.loc[2014, i]).loc[2015:]
 
+    """
     # #########
     # oggm default
     od = pd.DataFrame([], index=np.arange(1850, 2500))
@@ -349,6 +350,7 @@ def past_simulation_and_commitment(rgi, allobs, allmeta, histalp_storage,
     od.loc[2015:, '1885'] =\
         (cm85 - cm85.iloc[0] + od.loc[2014, '1885']).loc[2015:]
     # ###########################
+    """
 
     # plot
     fig, ax1 = plt.subplots(1, figsize=[23, 10])
@@ -356,6 +358,7 @@ def past_simulation_and_commitment(rgi, allobs, allmeta, histalp_storage,
     obs.plot(ax=ax1, color='k', marker='o',
              label='Observed length change')
 
+    """
     # default
     od = od.rolling(y_len, center=True).mean()
     od.loc[:2015, '1885'].plot(ax=ax1, linewidth=2.0, color='k',
@@ -364,7 +367,7 @@ def past_simulation_and_commitment(rgi, allobs, allmeta, histalp_storage,
                                label='OGGM default 1999')
     od.loc[2015:, '1885'].plot(ax=ax1, linewidth=2.0, color='C2',
                                label='OGGM default 1885')
-
+    """
 
     # past
     ensmean = df99.mean(axis=1)
@@ -391,6 +394,7 @@ def past_simulation_and_commitment(rgi, allobs, allmeta, histalp_storage,
              label='ensemble mean +/- 1 std (1999)', alpha=0.5)
     ensmeanmean.loc[2015:].plot(ax=ax1, linewidth=4.0, color='C3',
                                 label='ensemble mean (1999)')
+    postlength = ensmeanmean.dropna().iloc[-30:]
 
     # 1885
     ensmean = df85.mean(axis=1)
@@ -409,9 +413,28 @@ def past_simulation_and_commitment(rgi, allobs, allmeta, histalp_storage,
     prelength = ensmeanmean.dropna().iloc[-30:]
     ax1.plot(df85.index, np.ones(len(df85)) * prelength.mean(), 'y-',
              linewidth=2, label='1870-1900 equilibrium length')
-    #ax1.plot(prelength.index, np.ones(30)*prelength.mean(), 'k-', linewidth=2)
-    #ax1.plot(np.arange(2000, 2015), np.ones(15) * prelength.mean(), 'k-',
-    #         linewidth=2,)
+
+    # climate temperatures
+    ensmembers = i
+    """
+    
+    t85, t99 = get_mean_temps_eq(rgi, histalp_storage, comit_storage, ensmembers)
+    ax1.text(2330, postlength.mean(),
+             'tmean = {:.2f}'.format(t99))
+    ax1.text(2330, (prelength.mean() + postlength.mean()) / 2,
+             'dT = {:.2f}'.format(t99-t85))
+    ax1.text(2330, prelength.mean(),
+             'tmean = {:.2f})'.format(t85))
+
+    """
+    t85a, t99a, t2k = get_mean_temps_2k(rgi)
+    ax1.text(2330, postlength.mean(),
+             'dT = {:.2f} ({:.2f})'.format(t99a-t2k, t99a))
+    ax1.text(2330, prelength.mean(),
+             'dT = {:.2f} ({:.2f})'.format(t85a-t2k, t85a))
+
+    ax1.text(2330, (prelength.mean()+postlength.mean())/2,
+             't2k = {:.2f}'.format(t2k))
 
     ylim = ax1.get_ylim()
     ax1.plot([2015, 2015], ylim, 'k-', linewidth=2)
@@ -553,3 +576,111 @@ def past_simulation_and_projection(rgi, allobs, allmeta, histalp_storage,
     fig.tight_layout()
     fn1 = os.path.join(pout, 'proj_%s.png' % rgi)
     fig.savefig(fn1)
+
+
+def get_mean_temps_eq(rgi, histalp_storage, comit_storage, ensmembers):
+    from oggm import cfg, utils, GlacierDirectory
+    from oggm.core.massbalance import MultipleFlowlineMassBalance
+    from oggm.core.flowline import FileModel
+    import shutil
+
+
+    # 1. get mean surface heights
+
+    df85 = pd.DataFrame([])
+    df99 = pd.DataFrame([])
+    for i in range(ensmembers):
+        fnc1 = os.path.join(comit_storage, rgi,
+                            'model_run_commitment1885_{:02d}.nc'.format(i))
+        fnc2 = os.path.join(comit_storage, rgi,
+                            'model_run_commitment1999_{:02d}.nc'.format(i))
+        tmpmod1 = FileModel(fnc1)
+        tmpmod2 = FileModel(fnc2)
+        for j in np.arange(270, 301):
+            tmpmod1.run_until(j)
+            df85.loc[:, '{}{}'.format(i, j)] = tmpmod1.fls[-1].surface_h
+            tmpmod2.run_until(j)
+            df99.loc[:, '{}{}'.format(i, j)] = tmpmod2.fls[-1].surface_h
+
+    meanhgt99 = df99.mean(axis=1).values
+    meanhgt85 = df85.mean(axis=1).values
+
+    # 2. get the climate
+    # Initialize OGGM
+    cfg.initialize()
+    wd = utils.gettempdir(reset=True)
+    cfg.PATHS['working_dir'] = wd
+    utils.mkdir(wd, reset=True)
+    cfg.PARAMS['baseline_climate'] = 'HISTALP'
+    # and set standard histalp values
+    cfg.PARAMS['temp_melt'] = -1.75
+
+    i = 0
+    storage_dir = os.path.join(histalp_storage, rgi, '{:02d}'.format(i),
+                               rgi[:8], rgi[:11], rgi)
+    new_dir = os.path.join(cfg.PATHS['working_dir'], 'per_glacier',
+                           rgi[:8], rgi[:11], rgi)
+    shutil.copytree(storage_dir, new_dir)
+    gdir = GlacierDirectory(rgi)
+    mb = MultipleFlowlineMassBalance(gdir, filename='climate_monthly',
+                                     check_calib_params=False)
+    # need to do the above for every ensemble member if I consider PRECIP!
+    # and set cfg.PARAMS['prcp_scaling_factor'] = pdict['prcp_scaling_factor']
+
+    df99_2 = pd.DataFrame()
+    df85_2 = pd.DataFrame()
+    for i in np.arange(9, 12):
+        for y in np.arange(1870, 1901):
+            flyear = utils.date_to_floatyear(y, i)
+            tmp = mb.flowline_mb_models[-1].get_monthly_climate(meanhgt85,
+                                                                flyear)[0]
+            df85_2.loc[y, i] = tmp.mean()
+        for y in np.arange(1984, 2015):
+            tmp = mb.flowline_mb_models[-1].get_monthly_climate(meanhgt99,
+                                                                flyear)[0]
+            df99_2.loc[y, i] = tmp.mean()
+
+    t99 = df99_2.mean().mean()
+    t85 = df85_2.mean().mean()
+    return t85, t99
+
+
+def get_mean_temps_2k(rgi):
+    from oggm import cfg, utils, workflow, tasks
+    from oggm.core.massbalance import PastMassBalance
+
+    # Initialize OGGM
+    cfg.initialize()
+    wd = utils.gettempdir(reset=True)
+    cfg.PATHS['working_dir'] = wd
+    utils.mkdir(wd, reset=True)
+    cfg.PARAMS['baseline_climate'] = 'HISTALP'
+    # and set standard histalp values
+    cfg.PARAMS['temp_melt'] = -1.75
+    cfg.PARAMS['prcp_scaling_factor'] = 1.75
+
+    gdir = workflow.init_glacier_regions(rgidf=rgi.split('_')[0],
+                                         from_prepro_level=3,
+                                         prepro_border=10)[0]
+    # run histalp climate on glacier!
+    tasks.process_histalp_data(gdir)
+
+    f = gdir.get_filepath('climate_historical')
+    with utils.ncDataset(f) as nc:
+        refhgt = nc.ref_hgt
+
+    mb = PastMassBalance(gdir, check_calib_params=False)
+
+    df = pd.DataFrame()
+
+    for y in np.arange(1870, 2015):
+        for i in np.arange(9, 12):
+            flyear = utils.date_to_floatyear(y, i)
+            tmp = mb.get_monthly_climate([refhgt], flyear)[0]
+            df.loc[y, i] = tmp.mean()
+
+    t99 = df.loc[1984:2014, :].mean().mean()
+    t85 = df.loc[1870:1900, :].mean().mean()
+    t2k = df.loc[1900:2000, :].mean().mean()
+    return t85, t99, t2k
+
