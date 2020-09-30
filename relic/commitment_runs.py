@@ -13,7 +13,8 @@ log = logging.getLogger(__name__)
 
 
 def run_and_store_from_disk(rgi, histalp_storage, commit_storage, y0=1999,
-                            years=300, seed=None, unique_samples=False):
+                            years=300, seed=None, unique_samples=False,
+                            halfsize=15):
 
     for i in np.arange(999):
         # Local working directory (where OGGM will write its output)
@@ -52,7 +53,8 @@ def run_and_store_from_disk(rgi, histalp_storage, commit_storage, y0=1999,
                                          mb_model_class=RandomMassBalance,
                                          filename='climate_monthly',
                                          bias=None, y0=y0, seed=seed,
-                                         unique_samples=unique_samples)
+                                         unique_samples=unique_samples,
+                                         halfsize=halfsize)
 
         robust_model_run(gdir,
                          output_filesuffix='commitment{:04d}_{:02d}'.format(
