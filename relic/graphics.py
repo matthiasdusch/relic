@@ -11,6 +11,8 @@ import pickle
 import pandas as pd
 import xarray as xr
 
+from oggm.core.flowline import FileModel
+
 from relic.postprocessing import (mae_weighted, optimize_cov, calc_coverage,
                                   relative_length_change)
 from relic.preprocessing import GLCDICT
@@ -23,7 +25,7 @@ def paramplots(df, glid, pout, y_len=None):
     fig1, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=[25, 5])
 
     # get MAEs
-    maes = mae_weighted(df, normalised=True).sort_values().iloc[:100]
+    maes = mae_weighted(df).sort_values().iloc[:100]
 
     allvars = ['prcp_scaling_factor', 'mbbias', 'glena_factor']
 
@@ -154,7 +156,7 @@ def past_simulation_and_params(glcdict, pout, y_len=5):
         ax2 = fig.add_subplot(gs[0, 3])
 
         df.loc[:, 'obs'].plot(ax=ax1, color='k', marker='o',
-                              label='Observed length change')
+                              label='Observations')
 
         # OGGM standard
         for run in df.columns:
@@ -166,7 +168,7 @@ def past_simulation_and_params(glcdict, pout, y_len=5):
                     (para['glena_factor'] == 1)):
                 df.loc[:, run].rolling(y_len, center=True). \
                     mean().plot(ax=ax1, linewidth=2, color='k',
-                                label='OGGM default parameters')
+                                label='HISTALP climate (OGGM default parameters run)')
                 oggmdefault = run
 
         maes = mae_weighted(df).sort_values()
@@ -184,23 +186,23 @@ def past_simulation_and_params(glcdict, pout, y_len=5):
         cov = calc_coverage(df, idx2plot2, df['obs'])
 
         ax1.fill_between(ensmeanmean.index, ensmeanmean - ensstdmean,
-                         ensmeanmean + ensstdmean, color='C0', alpha=0.5)
+                         ensmeanmean + ensstdmean, color='xkcd:teal', alpha=0.5)
 
         # nolbl = df.loc[:, idx2plot2].rolling(y_len, center=True).mean().copy()
         # nolbl.columns = ['' for i in range(len(nolbl.columns))]
         # nolbl.plot(ax=ax1, linewidth=0.8, color='C0')
 
-        ax1.plot(0, 0, color='C0', linewidth=10,
-                 label='ensemble mean +/- 1 std', alpha=0.5)
+        #ax1.plot(0, 0, color='C0', linewidth=10,
+        #         label='ensemble mean +/- 1 std', alpha=0.5)
 
         # plot ens members
-        ensmeanmean.plot(ax=ax1, linewidth=4.0, color='C0',
-                         label='ensemble mean')
+        ensmeanmean.plot(ax=ax1, linewidth=4.0, color='xkcd:teal',
+                         label='HISTALP climate (ensemble parameters runs)')
 
         # reference run (basically min mae)
         df.loc[:, maes.index[0]].rolling(y_len, center=True).mean(). \
-            plot(ax=ax1, linewidth=3, color='C4',
-                 label='minimum wMAE run')
+            plot(ax=ax1, linewidth=3, color='xkcd:lavender',
+                 label='HISTALP climate (minimum wMAE parameter run)')
 
         name = GLCDICT.get(rgi_id)[2]
 
@@ -208,7 +210,7 @@ def past_simulation_and_params(glcdict, pout, y_len=5):
         mae_best = maes[0]
 
         ax1.set_title('%s' % name, fontsize=28)
-        ax1.text(1970, -4700, '%d ensemble members  '
+        ax1.text(1990, -4700, '%d ensemble members  '
                               '    coverage = %.2f\n'
                               'wMAE enselbe = %.2f  '
                               '  wMAE best = %.2f' %
@@ -222,30 +224,45 @@ def past_simulation_and_params(glcdict, pout, y_len=5):
         ax1.grid(True)
 
         ax1.legend(bbox_to_anchor=(0.0, -0.175), loc='upper left', fontsize=14,
-                   ncol=3)
+                   ncol=2)
 
         # parameter plots
         from colorspace import sequential_hcl
-        col = sequential_hcl('Blues 3').colors(len(idx2plot2) + 3)
+        #col = sequential_hcl('Blues 3').colors(len(idx2plot2) + 3)
+        col = sequential_hcl('Blue-Yellow').colors(len(idx2plot2) + 3)
         for i, run in enumerate(idx2plot2):
             para = ast.literal_eval('{' + run + '}')
             psf = para['prcp_scaling_factor']
-            psf = (psf - 0.5) / (4 - 0.5)
+            #psf = (psf - 0.5) / (4 - 0.5)
             gla = para['glena_factor']
-            gla = (gla - 1) / (4 - 1.0)
+            #gla = (gla - 1) / (4 - 1.0)
             mbb = para['mbbias']
-            mbb = (mbb - -1400) / (1000 - -1400)
+            # mbb = (mbb - -1400) / (1000 - -1400)
+            # scall mbb to range 0.5-4
+            mbb = (mbb - -1400) * (4-0.5) / (1000 - -1400) + 0.5
 
             ax2.plot([1, 2, 3], [psf, gla, mbb], color=col[i], linewidth=2)
 
-        ax2.set_xlabel('calibration parameters', fontsize=20)
-        ax2.set_ylabel('normalized values', fontsize=20)
+        ax2.set_xlabel('calibration parameters', fontsize=18)
+        ax2.set_ylabel('Precipitation scaling factor\nGlen A factor',
+                       fontsize=18)
         ax2.set_xlim([0.8, 3.2])
-        ax2.set_ylim([-0.1, 1.1])
+        ax2.set_ylim([0.3, 4.2])
         ax2.set_xticks([1, 2, 3])
         ax2.set_xticklabels(['Psf', 'GlenA', 'MB bias'], fontsize=16)
-        ax2.set_yticks([0, 1])
-        ax2.set_yticklabels([''])
+        ax2.tick_params(axis='y', which='major', labelsize=16)
+        ax2.grid(True)
+
+        ax3 = ax2.twinx()
+        # scale to same y lims
+        scale = (4.2-0.3)/(4.0-0.5)
+        dy = (2400*scale-2400)/2
+        ax3.set_ylim([-1400-dy, 1000+dy])
+        ax3.set_ylabel('mass balance bias [m w.e. ]', fontsize=18)
+        ax3.set_yticks(np.arange(-1400, 1100, 400))
+        ax3.set_yticklabels(['-1.4', '-1.0', '-0.6', '-0.2',
+                             '0.2', '0.6', '1.0'])
+        ax3.tick_params(axis='both', which='major', labelsize=16)
 
         # fig1.subplots_adjust(right=0.7)
         fig.tight_layout()
@@ -261,12 +278,164 @@ def past_simulation_and_params(glcdict, pout, y_len=5):
 
 
 def past_simulation_and_commitment(rgi, allobs, allmeta, histalp_storage,
-                                   comit_storage, pout, y_len=5):
+                                   comit_storage, comit_storage_noseed,
+                                   pout, y_len=5, comyears=300):
+
+    cols = ['xkcd:teal',
+            'xkcd:orange',
+            'xkcd:azure',
+            'xkcd:tomato',
+            'xkcd:blue'
+            ]
+
     obs = allobs.loc[rgi.split('_')[0]]
     meta = allmeta.loc[rgi.split('_')[0]]
 
-    df99 = pd.DataFrame([], index=np.arange(1850, 2500))
-    df85 = pd.DataFrame([], index=np.arange(1850, 2500))
+    fn99 = 'model_diagnostics_commitment1999_{:02d}.nc'
+    df99 = get_ensemble_length(rgi, histalp_storage, comit_storage, fn99, meta)
+    fn85 = 'model_diagnostics_commitment1885_{:02d}.nc'
+    df85 = get_ensemble_length(rgi, histalp_storage, comit_storage, fn85, meta)
+
+    # plot
+    fig, ax1 = plt.subplots(1, figsize=[23, 10])
+
+    obs.plot(ax=ax1, color='k', marker='o',
+             label='Observations')
+
+    # past
+    ensmean = df99.mean(axis=1)
+    ensmeanmean = ensmean.rolling(y_len, center=True).mean()
+    ensstdmean = df99.std(axis=1).rolling(y_len, center=True).mean()
+
+    ax1.fill_between(ensmeanmean.loc[:2015].index,
+                     ensmeanmean.loc[:2015] - ensstdmean.loc[:2015],
+                     ensmeanmean.loc[:2015] + ensstdmean.loc[:2015],
+                     color=cols[0], alpha=0.5)
+
+    #ax1.plot(0, 0, color='C0', linewidth=10,
+    #         label='ensemble mean +/- 1 std', alpha=0.5)
+    ensmeanmean.loc[:2015].plot(ax=ax1, linewidth=4.0, color=cols[0],
+                                label='HISTALP climate')
+
+    # 1999
+    ax1.fill_between(ensmeanmean.loc[2015:].index,
+                     ensmeanmean.loc[2015:] - ensstdmean.loc[2015:],
+                     ensmeanmean.loc[2015:] + ensstdmean.loc[2015:],
+                     color=cols[1], alpha=0.5)
+
+    #ax1.plot(0, 0, color='C1', linewidth=10,
+    #         label='ensemble mean +/- 1 std (1999)', alpha=0.5)
+    ensmeanmean.loc[2015:].plot(ax=ax1, linewidth=4.0, color=cols[1],
+                                label='Random climate (1984-2014)')
+
+    # 1885
+    ensmean = df85.mean(axis=1)
+    ensmeanmean = ensmean.rolling(y_len, center=True).mean()
+    ensstdmean = df85.std(axis=1).rolling(y_len, center=True).mean()
+    ax1.fill_between(ensmeanmean.loc[2015:].index,
+                     ensmeanmean.loc[2015:] - ensstdmean.loc[2015:],
+                     ensmeanmean.loc[2015:] + ensstdmean.loc[2015:],
+                     color=cols[2], alpha=0.5)
+
+    #ax1.plot(0, 0, color='C9', linewidth=10,
+    #         label='ensemble mean +/- 1 std (1885)', alpha=0.5)
+    ensmeanmean.loc[2015:].plot(ax=ax1, linewidth=4.0, color=cols[2],
+                                label='Random climate (1870-1900)')
+
+    """
+    # climate temperatures
+    ensmembers = i
+    
+    t85, t99 = get_mean_temps_eq(rgi, histalp_storage, comit_storage, ensmembers)
+    ax1.text(2330, postlength.mean(),
+             'tmean = {:.2f}'.format(t99))
+    ax1.text(2330, (prelength.mean() + postlength.mean()) / 2,
+             'dT = {:.2f}'.format(t99-t85))
+    ax1.text(2330, prelength.mean(),
+             'tmean = {:.2f})'.format(t85))
+    
+    t85a, t99a, t2k = get_mean_temps_2k(rgi)
+    ax1.text(2330, postlength.mean(),
+             'dT = {:.2f} ({:.2f})'.format(t99a-t2k, t99a))
+    ax1.text(2330, prelength.mean(),
+             'dT = {:.2f} ({:.2f})'.format(t85a-t2k, t85a))
+
+    ax1.text(2330, (prelength.mean()+postlength.mean())/2,
+                   't2k = {:.2f}'.format(t2k))
+    """
+    # ---------------------------------------------------------------------
+    # plot commitment ensemble length
+    efn99 = 'model_diagnostics_commitment1999_{:02d}.nc'
+    edf99 = get_ensemble_length(rgi, histalp_storage, comit_storage_noseed,
+                                efn99, meta)
+    ensmean = edf99.mean(axis=1)
+    ensmeanmean = ensmean.rolling(y_len, center=True).mean()
+    ensstdmean = edf99.std(axis=1).rolling(y_len, center=True).mean()
+    postlength = ensmeanmean.dropna().iloc[-30:].mean()
+    poststd = ensstdmean.dropna().iloc[-30:].mean()
+
+    ax1.fill_between([2014+comyears+10, 2014+comyears+25],
+                     postlength + poststd, postlength - poststd,
+                     color=cols[3], alpha=0.5)
+    #ax1.plot(0, 0, color='C1', linewidth=10,
+    #         label='random climate 1984-2014 mean +/- 1 std', alpha=0.5)
+    ax1.plot([2014+comyears+10.5, 2014+comyears+24.5], [postlength, postlength], linewidth=4.0,
+             color=cols[3],
+             label='Random climate (1984-2014) equlibrium length from multiple seeds')
+
+    efn85 = 'model_diagnostics_commitment1885_{:02d}.nc'
+    edf85 = get_ensemble_length(rgi, histalp_storage, comit_storage_noseed,
+                                efn85, meta)
+    ensmean = edf85.mean(axis=1)
+    ensmeanmean = ensmean.rolling(y_len, center=True).mean()
+    ensstdmean = edf85.std(axis=1).rolling(y_len, center=True).mean()
+    prelength = ensmeanmean.dropna().iloc[-30:].mean()
+    prestd = ensstdmean.dropna().iloc[-30:].mean()
+    ax1.fill_between([2014+comyears+10, 2014+comyears+25],
+                     prelength + prestd, prelength - prestd,
+                     color=cols[4], alpha=0.5)
+    #ax1.plot(0, 0, color='C9', linewidth=10,
+    #         label='random climate 1870-1900 +/- 1 std', alpha=0.5)
+    ax1.plot([2014+comyears+10.5, 2014+comyears+24.5], [prelength, prelength],
+             linewidth=4.0,
+             color=cols[4],
+             label='Random climate (1870-1900) equlibrium length from multiple seeds')
+    # ---------------------------------------------------------------------
+
+    ylim = ax1.get_ylim()
+    #ax1.plot([2015, 2015], ylim, 'k-', linewidth=2)
+    ax1.set_xlim([1850, 2014+comyears+30])
+    #ax1.set_ylim(ylim)
+
+    ax2 = ax1.twinx()
+    ax2.set_ylabel('approximate absolute glacier length [m]', fontsize=22)
+    y1, y2 = get_absolute_length(ylim[0], ylim[1], rgi, df99, histalp_storage)
+    ax2.tick_params(axis='both', which='major', labelsize=18)
+    ax2.set_ylim([y1, y2])
+
+    name = GLCDICT.get(rgi.split('_')[0])[2]
+    ax1.set_title('%s' % name, fontsize=28)
+
+    ax1.set_ylabel('relative length change [m]', fontsize=26)
+    ax1.set_xlabel('Year', fontsize=26)
+
+    ax1.tick_params(axis='both', which='major', labelsize=22)
+    ax1.set_xticks([1900, 2000, 2114, 2214, 2314])
+    ax1.set_xticklabels(['1900', '2000', '100', '200', '300'])
+    ax1.grid(True)
+
+    ax1.legend(bbox_to_anchor=(-0.0, -0.1), loc='upper left', fontsize=14,
+               ncol=3)
+
+    fig.tight_layout()
+    fn1 = os.path.join(pout, 'commit_%s.png' % rgi)
+    fig.savefig(fn1)
+
+
+def get_ensemble_length(rgi, histalp_storage, future_storage,
+                        ensemble_filename, meta):
+
+    df = pd.DataFrame([], index=np.arange(1850, 3000))
 
     for i in np.arange(999):
 
@@ -285,183 +454,86 @@ def past_simulation_and_commitment(rgi, allobs, allmeta, histalp_storage,
 
         sp = sp.length_m.to_dataframe()['length_m']
         hi = hi.length_m.to_dataframe()['length_m']
-        df99.loc[:, i] = relative_length_change(meta, sp, hi)
-        df85.loc[:, i] = relative_length_change(meta, sp, hi)
+        df.loc[:, i] = relative_length_change(meta, sp, hi)
 
-    # commitment
+    ensemble_count = i
+    # future
+    for i in np.arange(ensemble_count):
+
+        fut = xr.open_dataset(os.path.join(future_storage, rgi,
+                                           ensemble_filename.format(i)))
+
+        fut = fut.length_m.to_dataframe()['length_m']
+        fut.index = fut.index + 2014
+        df.loc[2015:, i] = (fut - fut.iloc[0] + df.loc[2014, i]).loc[2015:]
+
+    return df
+
+
+def get_rcp_ensemble_length(rgi, histalp_storage, future_storage,
+                            rcp, meta):
+    cmip = ['CCSM4', 'CNRM-CM5', 'CSIRO-Mk3-6-0', 'CanESM2',
+            'GFDL-CM3', 'GFDL-ESM2G', 'GISS-E2-R', 'IPSL-CM5A-LR',
+            'MPI-ESM-LR', 'NorESM1-M']
+
+    dfrcp = pd.DataFrame([], index=np.arange(1850, 2101))
+
     for i in np.arange(999):
 
+        rgipath = os.path.join(histalp_storage, rgi, '{:02d}'.format(i),
+                               rgi[:8], rgi[:11], rgi)
+
         try:
-            cm99 = xr.open_dataset(
-                os.path.join(comit_storage, rgi,
-                             'model_diagnostics_commitment1999_{:02d}.nc'.
-                             format(i)))
-            cm85 = xr.open_dataset(
-                os.path.join(comit_storage, rgi,
-                             'model_diagnostics_commitment1885_{:02d}.nc'.
-                             format(i)))
+            sp = xr.open_dataset(
+                os.path.join(rgipath,
+                             'model_diagnostics_spinup_{:02d}.nc'.format(i)))
+            hi = xr.open_dataset(
+                os.path.join(rgipath,
+                             'model_diagnostics_histalp_{:02d}.nc'.format(i)))
         except FileNotFoundError:
             break
 
-        cm99 = cm99.length_m.to_dataframe()['length_m']
-        cm99.index = cm99.index + 2014
-        df99.loc[2015:, i] =\
-            (cm99 - cm99.iloc[0] + df99.loc[2014, i]).loc[2015:]
+        sp = sp.length_m.to_dataframe()['length_m']
+        hi = hi.length_m.to_dataframe()['length_m']
+        dfrcp.loc[:, i] = relative_length_change(meta, sp, hi)
 
-        cm85 = cm85.length_m.to_dataframe()['length_m']
-        cm85.index = cm85.index + 2014
-        df85.loc[2015:, i] =\
-            (cm85 - cm85.iloc[0] + df85.loc[2014, i]).loc[2015:]
+    nr_ensemblemembers = i
 
-    """
-    # #########
-    # oggm default
-    od = pd.DataFrame([], index=np.arange(1850, 2500))
-    rgipath = os.path.join('/home/matthias/length_change_1850/storage/',
-                           'oggmdefault', 'oggmdefault',
-                           rgi, '00',
-                           rgi[:8], rgi[:11], rgi)
+    # projection
+    for i in np.arange(nr_ensemblemembers):
 
-    sp = xr.open_dataset(
-        os.path.join(rgipath, 'model_diagnostics_spinup_00.nc'))
-    hi = xr.open_dataset(
-        os.path.join(rgipath, 'model_diagnostics_histalp_00.nc'))
+        df_cm = pd.DataFrame()
+        for cmi in cmip:
+            try:
+                cm = xr.open_dataset(
+                    os.path.join(future_storage, rgi,
+                                 'model_diagnostics_{}_{}_{:02d}.nc'.
+                                 format(cmi, rcp, i)))
+            except FileNotFoundError:
+                continue
 
-    sp = sp.length_m.to_dataframe()['length_m']
-    hi = hi.length_m.to_dataframe()['length_m']
-    od.loc[:, '1999'] = relative_length_change(meta, sp, hi)
-    od.loc[:, '1885'] = relative_length_change(meta, sp, hi)
-    cm99 = xr.open_dataset(
-        os.path.join('/home/matthias/length_change_1850/storage/',
-                     'oggmdefault', 'oggmdefault', 'commitment', rgi,
-                     'model_diagnostics_commitment1999_00.nc'))
-    cm85 = xr.open_dataset(
-        os.path.join('/home/matthias/length_change_1850/storage/',
-                     'oggmdefault', 'oggmdefault', 'commitment', rgi,
-                     'model_diagnostics_commitment1885_00.nc'))
+            df_cm.loc[:, cmi] = cm.length_m.to_dataframe()['length_m']
 
-    cm99 = cm99.length_m.to_dataframe()['length_m']
-    cm99.index = cm99.index + 2014
-    od.loc[2015:, '1999'] =\
-        (cm99 - cm99.iloc[0] + od.loc[2014, '1999']).loc[2015:]
+        cm = df_cm.mean(axis=1)
+        dfrcp.loc[2015:, i] = \
+            (cm - cm.iloc[0] + dfrcp.loc[2014, i]).loc[2015:]
 
-    cm85 = cm85.length_m.to_dataframe()['length_m']
-    cm85.index = cm85.index + 2014
-    od.loc[2015:, '1885'] =\
-        (cm85 - cm85.iloc[0] + od.loc[2014, '1885']).loc[2015:]
-    # ###########################
-    """
-
-    # plot
-    fig, ax1 = plt.subplots(1, figsize=[23, 10])
-
-    obs.plot(ax=ax1, color='k', marker='o',
-             label='Observed length change')
-
-    """
-    # default
-    od = od.rolling(y_len, center=True).mean()
-    od.loc[:2015, '1885'].plot(ax=ax1, linewidth=2.0, color='k',
-                               label='OGGM default HISTALP')
-    od.loc[2015:, '1999'].plot(ax=ax1, linewidth=2.0, color='C3',
-                               label='OGGM default 1999')
-    od.loc[2015:, '1885'].plot(ax=ax1, linewidth=2.0, color='C2',
-                               label='OGGM default 1885')
-    """
-
-    # past
-    ensmean = df99.mean(axis=1)
-    ensmeanmean = ensmean.rolling(y_len, center=True).mean()
-    ensstdmean = df99.std(axis=1).rolling(y_len, center=True).mean()
-
-    ax1.fill_between(ensmeanmean.loc[:2015].index,
-                     ensmeanmean.loc[:2015] - ensstdmean.loc[:2015],
-                     ensmeanmean.loc[:2015] + ensstdmean.loc[:2015],
-                     color='C0', alpha=0.5)
-
-    ax1.plot(0, 0, color='C0', linewidth=10,
-             label='ensemble mean +/- 1 std', alpha=0.5)
-    ensmeanmean.loc[:2015].plot(ax=ax1, linewidth=4.0, color='C0',
-                                label='ensemble mean')
-
-    # 1999
-    ax1.fill_between(ensmeanmean.loc[2015:].index,
-                     ensmeanmean.loc[2015:] - ensstdmean.loc[2015:],
-                     ensmeanmean.loc[2015:] + ensstdmean.loc[2015:],
-                     color='C3', alpha=0.5)
-
-    ax1.plot(0, 0, color='C3', linewidth=10,
-             label='ensemble mean +/- 1 std (1999)', alpha=0.5)
-    ensmeanmean.loc[2015:].plot(ax=ax1, linewidth=4.0, color='C3',
-                                label='ensemble mean (1999)')
-    postlength = ensmeanmean.dropna().iloc[-30:]
-
-    # 1885
-    ensmean = df85.mean(axis=1)
-    ensmeanmean = ensmean.rolling(y_len, center=True).mean()
-    ensstdmean = df85.std(axis=1).rolling(y_len, center=True).mean()
-    ax1.fill_between(ensmeanmean.loc[2015:].index,
-                     ensmeanmean.loc[2015:] - ensstdmean.loc[2015:],
-                     ensmeanmean.loc[2015:] + ensstdmean.loc[2015:],
-                     color='C2', alpha=0.5)
-
-    ax1.plot(0, 0, color='C2', linewidth=10,
-             label='ensemble mean +/- 1 std (1885)', alpha=0.5)
-    ensmeanmean.loc[2015:].plot(ax=ax1, linewidth=4.0, color='C2',
-                                label='ensemble mean (1885)')
-
-    prelength = ensmeanmean.dropna().iloc[-30:]
-    ax1.plot(df85.index, np.ones(len(df85)) * prelength.mean(), 'y-',
-             linewidth=2, label='1870-1900 equilibrium length')
-
-    # climate temperatures
-    ensmembers = i
-    """
-    
-    t85, t99 = get_mean_temps_eq(rgi, histalp_storage, comit_storage, ensmembers)
-    ax1.text(2330, postlength.mean(),
-             'tmean = {:.2f}'.format(t99))
-    ax1.text(2330, (prelength.mean() + postlength.mean()) / 2,
-             'dT = {:.2f}'.format(t99-t85))
-    ax1.text(2330, prelength.mean(),
-             'tmean = {:.2f})'.format(t85))
-
-    """
-    t85a, t99a, t2k = get_mean_temps_2k(rgi)
-    ax1.text(2330, postlength.mean(),
-             'dT = {:.2f} ({:.2f})'.format(t99a-t2k, t99a))
-    ax1.text(2330, prelength.mean(),
-             'dT = {:.2f} ({:.2f})'.format(t85a-t2k, t85a))
-
-    ax1.text(2330, (prelength.mean()+postlength.mean())/2,
-             't2k = {:.2f}'.format(t2k))
-
-    ylim = ax1.get_ylim()
-    ax1.plot([2015, 2015], ylim, 'k-', linewidth=2)
-    ax1.set_xlim([1850, 2314])
-    ax1.set_ylim(ylim)
-
-    name = GLCDICT.get(rgi.split('_')[0])[2]
-    ax1.set_title('%s' % name, fontsize=28)
-
-    ax1.set_ylabel('relative length change [m]', fontsize=26)
-    ax1.set_xlabel('Year', fontsize=26)
-
-    ax1.tick_params(axis='both', which='major', labelsize=22)
-    ax1.set_xticks([1900, 2000, 2114, 2214, 2314])
-    ax1.set_xticklabels(['1900', '2000', '100', '200', '300'])
-    ax1.grid(True)
-
-    ax1.legend(bbox_to_anchor=(-0.08, -0.175), loc='upper left', fontsize=14,
-               ncol=6)
-
-    fig.tight_layout()
-    fn1 = os.path.join(pout, 'commit_%s.png' % rgi)
-    fig.savefig(fn1)
+    return dfrcp
 
 
 def past_simulation_and_projection(rgi, allobs, allmeta, histalp_storage,
-                                   proj_storage, pout, y_len=5):
+                                   proj_storage, comit_storage,
+                                   pout, y_len=5,):
+
+    cols = ['xkcd:teal',
+            'xkcd:azure',
+            'xkcd:green',
+            'xkcd:orange',
+            'xkcd:magenta',
+            'xkcd:tomato',
+            'xkcd:blue'
+            ]
+
     obs = allobs.loc[rgi.split('_')[0]]
     meta = allmeta.loc[rgi.split('_')[0]]
 
@@ -469,41 +541,9 @@ def past_simulation_and_projection(rgi, allobs, allmeta, histalp_storage,
     dfallstd = pd.DataFrame([], index=np.arange(1850, 2101))
 
     for rcp in ['rcp26', 'rcp45', 'rcp60', 'rcp85']:
-        dfrcp = pd.DataFrame([], index=np.arange(1850, 2101))
 
-        for i in np.arange(999):
-
-            rgipath = os.path.join(histalp_storage, rgi, '{:02d}'.format(i),
-                                   rgi[:8], rgi[:11], rgi)
-
-            try:
-                sp = xr.open_dataset(
-                    os.path.join(rgipath,
-                                 'model_diagnostics_spinup_{:02d}.nc'.format(i)))
-                hi = xr.open_dataset(
-                    os.path.join(rgipath,
-                                 'model_diagnostics_histalp_{:02d}.nc'.format(i)))
-            except FileNotFoundError:
-                break
-
-            sp = sp.length_m.to_dataframe()['length_m']
-            hi = hi.length_m.to_dataframe()['length_m']
-            dfrcp.loc[:, i] = relative_length_change(meta, sp, hi)
-
-        # projection
-        for i in np.arange(999):
-
-            try:
-                cm = xr.open_dataset(
-                    os.path.join(proj_storage, rgi,
-                                 'model_diagnostics_CCSM4_{}_{:02d}.nc'.
-                                 format(rcp, i)))
-            except FileNotFoundError:
-                break
-
-            cm = cm.length_m.to_dataframe()['length_m']
-            dfrcp.loc[2015:, i] =\
-                (cm - cm.iloc[0] + dfrcp.loc[2014, i]).loc[2015:]
+        dfrcp = get_rcp_ensemble_length(rgi, histalp_storage, proj_storage,
+                                        rcp, meta)
 
         ensmean = dfrcp.mean(axis=1)
         dfall.loc[:, rcp] = ensmean.rolling(y_len, center=True).mean()
@@ -514,50 +554,90 @@ def past_simulation_and_projection(rgi, allobs, allmeta, histalp_storage,
     fig, ax1 = plt.subplots(1, figsize=[23, 10])
 
     obs.plot(ax=ax1, color='k', marker='o',
-             label='Observed length change')
+             label='Observations')
 
     # past
     ax1.fill_between(dfall.loc[:2015, rcp].index,
                      dfall.loc[:2015, rcp] - dfallstd.loc[:2015, rcp],
                      dfall.loc[:2015, rcp] + dfallstd.loc[:2015, rcp],
-                     color='C0', alpha=0.5)
-    ax1.plot(0, 0, color='C0', linewidth=10,
-             label='ensemble mean +/- 1 std', alpha=0.5)
-    dfall.loc[:2015, rcp].plot(ax=ax1, linewidth=4.0, color='C0',
-                               label='ensemble mean')
+                     color=cols[0], alpha=0.5)
+    #ax1.plot(0, 0, color='C0', linewidth=10,
+    #         label='ensemble mean +/- 1 std', alpha=0.5)
+    dfall.loc[:2015, rcp].plot(ax=ax1, linewidth=4.0, color=cols[0],
+                               label='HISTALP climate')
 
     # projections
     # rcp26
     ax1.fill_between(dfall.loc[2015:, 'rcp26'].index,
                      dfall.loc[2015:, 'rcp26'] - dfallstd.loc[2015:, 'rcp26'],
                      dfall.loc[2015:, 'rcp26'] + dfallstd.loc[2015:, 'rcp26'],
-                     color='C2', alpha=0.5)
-    ax1.plot(0, 0, color='C2', linewidth=10,
-             label='rcp26 ensemble mean +/- 1 std', alpha=0.5)
-    dfall.loc[2015:, 'rcp26'].plot(ax=ax1, linewidth=4.0, color='C2',
-                                   label='rcp26 ensemble mean')
+                     color=cols[1], alpha=0.5)
+    #ax1.plot(0, 0, color='C2', linewidth=10,
+    #         label='rcp26 ensemble mean +/- 1 std', alpha=0.5)
+    dfall.loc[2015:, 'rcp26'].plot(ax=ax1, linewidth=4.0, color=cols[1],
+                                   label='RCP 2.6 climate')
 
     # rcp45
-    dfall.loc[2015:, 'rcp45'].plot(ax=ax1, linewidth=4.0, color='C1',
-                                   label='rcp45 ensemble mean')
+    dfall.loc[2015:, 'rcp45'].plot(ax=ax1, linewidth=4.0, color=cols[2],
+                                   label='RCP 4.5 climate')
     # rcp60
-    dfall.loc[2015:, 'rcp60'].plot(ax=ax1, linewidth=4.0, color='C4',
-                                   label='rcp60 ensemble mean')
+    dfall.loc[2015:, 'rcp60'].plot(ax=ax1, linewidth=4.0, color=cols[3],
+                                   label='RCP 6.0 climate')
 
     # rcp85
     ax1.fill_between(dfall.loc[2015:, 'rcp85'].index,
                      dfall.loc[2015:, 'rcp85'] - dfallstd.loc[2015:, 'rcp85'],
                      dfall.loc[2015:, 'rcp85'] + dfallstd.loc[2015:, 'rcp85'],
-                     color='C3', alpha=0.5)
-    ax1.plot(0, 0, color='C3', linewidth=10,
-             label='rcp85 ensemble mean +/- 1 std', alpha=0.5)
-    dfall.loc[2015:, 'rcp85'].plot(ax=ax1, linewidth=4.0, color='C3',
-                                   label='rcp85 ensemble mean')
+                     color=cols[4], alpha=0.5)
+    #ax1.plot(0, 0, color='C3', linewidth=10,
+    #         label='rcp85 ensemble mean +/- 1 std', alpha=0.5)
+    dfall.loc[2015:, 'rcp85'].plot(ax=ax1, linewidth=4.0, color=cols[4],
+                                   label='RCP 8.5 climate')
+
+    # plot commitment length
+    fn99 = 'model_diagnostics_commitment1999_{:02d}.nc'
+    df99 = get_ensemble_length(rgi, histalp_storage, comit_storage, fn99, meta)
+    ensmean = df99.mean(axis=1)
+    ensmeanmean = ensmean.rolling(y_len, center=True).mean()
+    ensstdmean = df99.std(axis=1).rolling(y_len, center=True).mean()
+    postlength = ensmeanmean.dropna().iloc[-30:].mean()
+    poststd = ensstdmean.dropna().iloc[-30:].mean()
+
+    ax1.fill_between([2105, 2111],
+                     postlength + poststd, postlength - poststd,
+                     color=cols[5], alpha=0.5)
+    #ax1.plot(0, 0, color='C1', linewidth=10,
+    #         label='random climate 1984-2014 mean +/- 1 std', alpha=0.5)
+    ax1.plot([2105.5, 2110.5], [postlength, postlength], linewidth=4.0,
+             color=cols[5],
+             label='Random climate (1984-2014) equilibrium length from multiple seeds')
+
+    fn85 = 'model_diagnostics_commitment1885_{:02d}.nc'
+    df85 = get_ensemble_length(rgi, histalp_storage, comit_storage, fn85, meta)
+    ensmean = df85.mean(axis=1)
+    ensmeanmean = ensmean.rolling(y_len, center=True).mean()
+    ensstdmean = df85.std(axis=1).rolling(y_len, center=True).mean()
+    prelength = ensmeanmean.dropna().iloc[-30:].mean()
+    prestd = ensstdmean.dropna().iloc[-30:].mean()
+    ax1.fill_between([2105, 2111],
+                     prelength + prestd, prelength - prestd,
+                     color=cols[6], alpha=0.5)
+    #ax1.plot(0, 0, color='C9', linewidth=10,
+    #         label='random climate 1870-1900 +/- 1 std', alpha=0.5)
+    ax1.plot([2105.5, 2110.5], [prelength, prelength], linewidth=4.0,
+             color=cols[6],
+             label='Random climate (1870-1900) equilibrium length from multiple seeds')
 
     ylim = ax1.get_ylim()
-    ax1.plot([2015, 2015], ylim, 'k-', linewidth=2)
-    ax1.set_xlim([1850, 2100])
-    ax1.set_ylim(ylim)
+    #ax1.plot([2015, 2015], ylim, 'k-', linewidth=2)
+    ax1.set_xlim([1850, 2112])
+    #ax1.set_ylim(ylim)
+
+    ax2 = ax1.twinx()
+    ax2.set_ylabel('apporixmate absolute glacier length [m]', fontsize=22)
+    y1, y2 = get_absolute_length(ylim[0], ylim[1], rgi, df99, histalp_storage)
+    ax2.tick_params(axis='both', which='major', labelsize=18)
+    ax2.set_ylim([y1, y2])
 
     name = GLCDICT.get(rgi.split('_')[0])[2]
     ax1.set_title('%s' % name, fontsize=28)
@@ -570,8 +650,8 @@ def past_simulation_and_projection(rgi, allobs, allmeta, histalp_storage,
     #ax1.set_xticklabels(['1900', '2000', '100', '200', '300'])
     ax1.grid(True)
 
-    ax1.legend(bbox_to_anchor=(-0.08, -0.175), loc='upper left', fontsize=14,
-               ncol=6)
+    ax1.legend(bbox_to_anchor=(-0.0, -0.1), loc='upper left', fontsize=16,
+               ncol=4)
 
     fig.tight_layout()
     fn1 = os.path.join(pout, 'proj_%s.png' % rgi)
@@ -645,7 +725,7 @@ def get_mean_temps_eq(rgi, histalp_storage, comit_storage, ensmembers):
     return t85, t99
 
 
-def get_mean_temps_2k(rgi):
+def get_mean_temps_2k(rgi, return_prcp):
     from oggm import cfg, utils, workflow, tasks
     from oggm.core.massbalance import PastMassBalance
 
@@ -672,6 +752,7 @@ def get_mean_temps_2k(rgi):
     mb = PastMassBalance(gdir, check_calib_params=False)
 
     df = pd.DataFrame()
+    df2 = pd.DataFrame()
 
     for y in np.arange(1870, 2015):
         for i in np.arange(9, 12):
@@ -679,8 +760,34 @@ def get_mean_temps_2k(rgi):
             tmp = mb.get_monthly_climate([refhgt], flyear)[0]
             df.loc[y, i] = tmp.mean()
 
+        if return_prcp:
+            for i in np.arange(3, 6):
+                flyear = utils.date_to_floatyear(y, i)
+                pcp = mb.get_monthly_climate([refhgt], flyear)[3]
+                df2.loc[y, i] = tmp.mean()
+
     t99 = df.loc[1984:2014, :].mean().mean()
     t85 = df.loc[1870:1900, :].mean().mean()
     t2k = df.loc[1900:2000, :].mean().mean()
+
+    if return_prcp:
+        p99 = df2.loc[1984:2014, :].mean().mean()
+        p85 = df2.loc[1870:1900, :].mean().mean()
+        p2k = df2.loc[1900:2000, :].mean().mean()
+        return t85, t99, t2k, p85, p99, p2k
+
     return t85, t99, t2k
 
+
+def get_absolute_length(y0, y1, rgi, df, storage):
+    rgipath = os.path.join(storage, rgi, '{:02d}'.format(0),
+                           rgi[:8], rgi[:11], rgi)
+    mfile = os.path.join(rgipath, 'model_run_histalp_{:02d}.nc'.format(0))
+    tmpmod = FileModel(mfile)
+    absL = tmpmod.length_m
+    deltaL = df.loc[int(tmpmod.yr.values), 0]
+
+    abs_y0 = absL + (y0 - deltaL)
+    abs_y1 = absL + (y1 - deltaL)
+
+    return abs_y0, abs_y1

@@ -42,7 +42,7 @@ def mae_weighted(_df):
     return maeall
 
 
-def runs2df(runs, skip_bossons_mdg=False):
+def runs2df(runs, min_pcpsf=0, skip_bossons_mdg=False):
 
     # get all glaciers
     glcs = []
@@ -83,6 +83,11 @@ def runs2df(runs, skip_bossons_mdg=False):
                 continue
 
             rkey = list(run.keys())[0]
+
+            par = ast.literal_eval('{' + rkey + '}')
+            if par['prcp_scaling_factor'] < min_pcpsf:
+                print(rkey)
+                continue
 
             df.loc[rdic['rel_dl'].index, rkey] = rdic['rel_dl'].values
 
