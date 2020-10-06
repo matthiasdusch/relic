@@ -295,6 +295,8 @@ def past_simulation_and_commitment(rgi, allobs, allmeta, histalp_storage,
     df99 = get_ensemble_length(rgi, histalp_storage, comit_storage, fn99, meta)
     fn85 = 'model_diagnostics_commitment1885_{:02d}.nc'
     df85 = get_ensemble_length(rgi, histalp_storage, comit_storage, fn85, meta)
+    fn70 = 'model_diagnostics_commitment1970_{:02d}.nc'
+    df70 = get_ensemble_length(rgi, histalp_storage, comit_storage, fn70, meta)
 
     # plot
     fig, ax1 = plt.subplots(1, figsize=[23, 10])
@@ -341,6 +343,20 @@ def past_simulation_and_commitment(rgi, allobs, allmeta, histalp_storage,
     #         label='ensemble mean +/- 1 std (1885)', alpha=0.5)
     ensmeanmean.loc[2015:].plot(ax=ax1, linewidth=4.0, color=cols[2],
                                 label='Random climate (1870-1900)')
+
+    # 1970
+    ensmean = df70.mean(axis=1)
+    ensmeanmean = ensmean.rolling(y_len, center=True).mean()
+    ensstdmean = df70.std(axis=1).rolling(y_len, center=True).mean()
+    ax1.fill_between(ensmeanmean.loc[2015:].index,
+                     ensmeanmean.loc[2015:] - ensstdmean.loc[2015:],
+                     ensmeanmean.loc[2015:] + ensstdmean.loc[2015:],
+                     color='xkcd:chartreuse', alpha=0.5)
+
+    # ax1.plot(0, 0, color='C9', linewidth=10,
+    #         label='ensemble mean +/- 1 std (1885)', alpha=0.5)
+    ensmeanmean.loc[2015:].plot(ax=ax1, linewidth=4.0, color='xkcd:chartreuse',
+                                label='Random climate (1960-1980)')
 
     """
     # climate temperatures
