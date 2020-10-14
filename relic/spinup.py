@@ -29,12 +29,11 @@ def relic_run_until_equilibrium(model, rate=1e-4, ystep=10, max_ite=100):
         raise ValueError('Did not find equilibrium.')
 
 
-def minimize_dl(tbias, mb, fls, dl, len2003, glena, gdir, optimization):
+def minimize_dl(tbias, mb, fls, dl, len2003, gdir, optimization):
     # Mass balance
     mb.temp_bias = tbias
 
-    model = FluxBasedModel(fls, mb_model=mb,
-                           glen_a=glena)
+    model = FluxBasedModel(fls, mb_model=mb)
 
     try:
         relic_run_until_equilibrium(model,max_ite=200)
@@ -76,10 +75,7 @@ def minimize_dl(tbias, mb, fls, dl, len2003, glena, gdir, optimization):
         return delta
     else:
 
-        if glena is None:
-            filesuffix = '_spinup'
-        else:
-            filesuffix = '_spinup_%.3e' % glena
+        filesuffix = '_spinup'
 
         run_path = gdir.get_filepath('model_run',
                                      filesuffix=filesuffix,
@@ -87,8 +83,7 @@ def minimize_dl(tbias, mb, fls, dl, len2003, glena, gdir, optimization):
         diag_path = gdir.get_filepath('model_diagnostics',
                                       filesuffix=filesuffix,
                                       delete=True)
-        model2 = FluxBasedModel(fls, mb_model=mb,
-                                glen_a=glena)
+        model2 = FluxBasedModel(fls, mb_model=mb)
         model2.run_until_and_store(model.yr, run_path=run_path,
                                    diag_path=diag_path)
 
@@ -127,7 +122,7 @@ def final_spinup(tbias, mb, fls, dl, len2003, delta, gdir,
     return run_ds, diag_ds
 
 
-def systematic_spinup(gdir, meta, glena=None):
+def systematic_spinup(gdir, meta, y0=1999):
 
     # how long are we at initialization
     fls = gdir.read_pickle('model_flowlines')
@@ -141,7 +136,8 @@ def systematic_spinup(gdir, meta, glena=None):
                 'gdirs_v1.2 remove filename kwarg')
     mb = MultipleFlowlineMassBalance(gdir, fls=fls,
                                      mb_model_class=ConstantMassBalance,
-                                     filename='climate_monthly')
+                                     filename='climate_monthly',
+                                     y0=y0)
 
     # coarse first test values
     totest = np.arange(-8, 3.1)
@@ -158,7 +154,7 @@ def systematic_spinup(gdir, meta, glena=None):
         # dont do anything twice
         totest = totest[~np.isin(totest, rval.index)]
         for tb in totest:
-            delta = minimize_dl(tb, mb, fls, dl, len2003, glena, gdir, True)
+            delta = minimize_dl(tb, mb, fls, dl, len2003, gdir, True)
             if delta == len2003**2:
                 delta = np.nan
 
@@ -178,7 +174,6 @@ def systematic_spinup(gdir, meta, glena=None):
             log.info('SPINUP ERROR (%s): could not find working tbias!' %
                      gdir.rgi_id)
             return -999
-
 
         # no fit so far, get new tbias to test:
         # current minima

@@ -24,51 +24,28 @@ def paramplots(df, glid, pout, y_len=None):
 
     fig1, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=[25, 5])
 
-    # get MAEs
-    maes = mae_weighted(df).sort_values().iloc[:100]
-
     allvars = ['prcp_scaling_factor', 'mbbias', 'glena_factor']
 
     for var, ax in zip(allvars, [ax1, ax2, ax3]):
         notvars = allvars.copy()
         notvars.remove(var)
 
-        # paretodict = pareto3({glid: df})
-        # papar = ast.literal_eval('{' + paretodict[glid][0] + '}')
-
-        # papar = {'glena_factor': 1.0, 'mbbias': -200, 'prcp_scaling_factor': 3.5}
-
-        # lets use min MAE here
-        # papar = ast.literal_eval('{' + maes.index[0] + '}')
         # lets use OGGM HISTALP default
         papar = {'glena_factor': 1.0, 'mbbias': 0, 'prcp_scaling_factor': 1.75}
 
-        """
-        # uncomment for 100 grey lines
-        nolbl = df.loc[:, maes.index].rolling(y_len, center=True).mean().copy()
-        nolbl.columns = ['' for i in range(len(nolbl.columns))]
-        nolbl.plot(ax=ax, linewidth=0.5, color='0.8')
-
-        # plot 1 for label
-        df.loc[:, maes.index[0]].rolling(y_len, center=True). \
-            mean().plot(ax=ax, linewidth=0.5, color='0.8',
-                        label='100 smallest MAE runs')
-        """
-
         # store specific runs
-        dfvar = pd.DataFrame([], index=df.index)
+        varcols = {'mbbias': [-1400, -1200, -1000, -800, -600, -400, -200,
+                              -100, 0, 100, 200, 400, 600, 800, 1000],
+                   'prcp_scaling_factor': np.arange(0.5, 4.1, 0.25),
+                   'glena_factor': np.arange(1, 4.1, 0.5)}
+
+        dfvar = pd.DataFrame([], columns=varcols[var], index=df.index)
 
         # OGGM standard
         for run in df.columns:
             if run == 'obs':
                 continue
             para = ast.literal_eval('{' + run + '}')
-            if ((np.abs(para['prcp_scaling_factor'] - 1.75) < 0.01) and
-                    (para['mbbias'] == 0) and
-                    (para['glena_factor'] == 1)):
-                df.loc[:, run].rolling(y_len, center=True). \
-                    mean().plot(ax=ax, linewidth=6, color='k',
-                                label='OGGM default parameters')
 
             if ((np.isclose(para[notvars[0]],
                             papar[notvars[0]], atol=0.01)) and
@@ -76,35 +53,30 @@ def paramplots(df, glid, pout, y_len=None):
                                 papar[notvars[1]], atol=0.01))):
                 dfvar.loc[:, para[var]] = df.loc[:, run]
 
-        df.loc[:, maes.index[0]].rolling(y_len, center=True). \
-            mean().plot(ax=ax, linewidth=6, color='C2',
-                        label='minimal MAE run')
+        import cmocean
+        from matplotlib.colors import LinearSegmentedColormap
 
         if var == 'prcp_scaling_factor':
-            colors = ["#4B0055", "#471D67", "#3C3777", "#1E4D85", "#006290",
-                      "#007796", "#008A98", "#009B95", "#00AC8E", "#00BA82",
-                      "#25C771", "#73D25B", "#A6DA42", "#D4E02D", "#FDE333"]
-            colors.reverse()
+
+            cmap = LinearSegmentedColormap('lala', cmocean.tools.get_dict(cmocean.cm.deep))
+            colors = [cmap(x) for x in np.linspace(0,1,21)][2:-4]
+
             lbl = 'Precip SF: '
         elif var == 'glena_factor':
             lbl = 'Glen A: '
-            colors = ["#001889", "#67008E", "#9C008E", "#C32D80", "#DD5E61",
-                      "#EC8F21", "#F1C500"]
-            colors.reverse()
-        elif var == 'mbbias':
-            # colors = ["#00308D","#064D9B","#436CB7","#698CD6","#8DADF8","#B1CFFF","#FFD8D9","#FFB5B5","#F59393","#D17171","#AE5050","#8C2F2F","#6C0203"]
-            colors = ["#023FA5", "#1B44A4", "#2B4AA4", "#3852A5", "#465BA7",
-                      "#5767AC", "#737EB5", "#B66C7B", "#A84E63", "#A03D57",
-                      "#9A304E", "#962346", "#921740"]  # ,"#8E063B"
-            lbl = 'MB bias [mm w.e.]: '
 
-        dfvar = dfvar.sort_index(axis=1)
-        col = dfvar.columns.astype('str').to_list()
-        col = [lbl + c for c in col]
-        col[1:-1] = ['' for i in np.arange(1, len(dfvar.columns) - 1)]
-        dfvar.columns = col
-        dfvar.rolling(y_len, center=True).mean().plot(ax=ax, color=colors,
-                                                      linewidth=2)
+            cmap = LinearSegmentedColormap('lala', cmocean.tools.get_dict(
+                cmocean.cm.matter))
+            colors = [cmap(x) for x in np.linspace(0, 1, 7)]
+
+        elif var == 'mbbias':
+            cmap = LinearSegmentedColormap('lala', cmocean.tools.get_dict(
+                cmocean.cm.balance))
+            colors = [cmap(x) for x in np.linspace(0, 0.5, 11)][2:10]
+            colors.append((0.5, 0.5, 0.5, 1.0))
+            colors = colors + [cmap(x) for x in np.linspace(0.5, 1, 11)][1:8]
+
+            lbl = 'MB bias [mm w.e.]: '
 
         # plot observations
         df.loc[:, 'obs'].rolling(1, min_periods=1).mean(). \
@@ -112,8 +84,37 @@ def paramplots(df, glid, pout, y_len=None):
                  marker='o', label='Observed length change',
                  markersize=6)
 
-        # ax.set_title('%s' % name, fontsize=30)
-        # ax.set_ylabel('relative length change [m]', fontsize=26)
+        dfvar = dfvar.sort_index(axis=1)
+
+        # first parameter
+        if var != 'glena_factor':
+            dfvar.loc[:, varcols[var][0]].rolling(y_len, center=True).mean().\
+                plot(ax=ax, color=colors[0], linewidth=2,
+                     label='{}{}'.format(lbl, str(varcols[var][0])))
+
+            ax.plot(0, 0, '|k', label=' ')
+
+        # default parameter column
+        dc = np.where(dfvar.columns == papar[var])[0][0]
+        dfvar.loc[:, varcols[var][dc]].rolling(y_len, center=True).mean(). \
+            plot(ax=ax, color=colors[dc], linewidth=5,
+                 label='{}{} (OGGM default)'.format(lbl,
+                                                    str(varcols[var][dc])))
+
+        # dummy
+        ax.plot(0, 0, '|k', label=' ')
+
+        # last parameter
+        dfvar.loc[:, varcols[var][-1]].rolling(y_len, center=True).mean(). \
+            plot(ax=ax, color=colors[-1], linewidth=2,
+                 label='{}{}'.format(lbl, str(varcols[var][-1])))
+
+        # all pparameters
+        nolbl = ['' for i in np.arange(len(dfvar.columns))]
+        dfvar.columns = nolbl
+        dfvar.rolling(y_len, center=True).mean().plot(ax=ax, color=colors,
+                                                      linewidth=2)
+
         ax.set_xlabel('Year', fontsize=18)
         ax.set_xlim([1850, 2020])
         ax.set_ylim([-4000, 1000])

@@ -96,23 +96,7 @@ def spinup_plus_histalp(gdir, meta=None, mb_bias=None, runsuffix=''):
     # we want to simulate as much as possible -> histalp till 2014
     obs_ye = 2014
 
-    # --------- SPIN IT UP ---------------
-    tbias = systematic_spinup(gdir, meta)
-
-    if tbias == -999:
-
-        rval = {'rgi_id': gdir.rgi_id, 'name': meta['name'],
-                'histalp': np.nan,
-                'spinup': np.nan,
-                'tbias': np.nan, 'tmean': np.nan, 'pmean': np.nan}
-        return rval
-    # --------- GET SPINUP STATE ---------------
-    tmp_mod = FileModel(gdir.get_filepath('model_run',
-                                          filesuffix='_spinup'))
-    tmp_mod.run_until(tmp_mod.last_yr)
-
-    # --------- HIST IT DOWN ---------------
-    # take care of mass balance bias:
+    # --------- take care of MASS BALANCE BIAS ---------------
     if '_merged' in gdir.rgi_id:
         fls = gdir.read_pickle('model_flowlines')
         flids = np.unique([fl.rgi_id for fl in fls])
@@ -128,7 +112,23 @@ def spinup_plus_histalp(gdir, meta=None, mb_bias=None, runsuffix=''):
         # mass_balance_bias += df['bias']
         df['bias'] += mb_bias
         gdir.write_json(df, 'local_mustar')
-    # now actual simulation
+
+    # --------- SPIN IT UP ---------------
+    tbias = systematic_spinup(gdir, meta)
+
+    if tbias == -999:
+
+        rval = {'rgi_id': gdir.rgi_id, 'name': meta['name'],
+                'histalp': np.nan,
+                'spinup': np.nan,
+                'tbias': np.nan, 'tmean': np.nan, 'pmean': np.nan}
+        return rval
+    # --------- GET SPINUP STATE ---------------
+    tmp_mod = FileModel(gdir.get_filepath('model_run',
+                                          filesuffix='_spinup'))
+    tmp_mod.run_until(tmp_mod.last_yr)
+
+    # --------- HIST IT DOWN --------------
     try:
         run_from_climate_data(gdir, ys=meta['first'], ye=obs_ye,
                               init_model_fls=tmp_mod.fls,

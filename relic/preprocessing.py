@@ -51,7 +51,7 @@ GLCDICT = {
     'RGI60-11.01346': ['glamos', 'A54l/19',
                        'Unterer Grindelwaldgletscher', 'Switzerland'],
     'RGI60-11.01450': ['glamos', 'B36/26',
-                       'Großer Aletschgletscher (with Mittelaletsch Gl.)',
+                       'Großer Aletschgletscher (with Mittelaletschgletscher)',
                        'Switzerland'],
     'RGI60-11.01478': ['glamos', 'B40/07', 'Fieschergletscher', 'Switzerland'],
     'RGI60-11.01698': ['glamos', 'B31/04', 'Langgletscher', 'Switzerland'],
@@ -61,9 +61,11 @@ GLCDICT = {
     'RGI60-11.01974': ['wgms', 670, 'Ghiacciaio dei Forni', 'Italy'],
 
     'RGI60-11.02051': ['glamos', 'E23/06',
-                       'Vadret da Tschierva (with Roseg)', 'Switzerland'],
+                       'Vadret da Tschierva (with Vadret da Roseg)',
+                       'Switzerland'],
     'RGI60-11.02709': ['glamos', 'B72/15',
-                       'Glacier du Mont Mine (with Ferpecle)', 'Switzerland'],
+                       'Glacier du Mont Mine (with Glacier de Ferpecle)',
+                       'Switzerland'],
     'RGI60-11.02245': ['glamos', 'C83/12', 'Vadrec del Forno', 'Switzerland'],
     'RGI60-11.02630': ['glamos', 'B63/05', 'Glacier de Zinal', 'Switzerland'],
     'RGI60-11.02704': ['glamos', 'B52/29', 'Allalingletscher', 'Switzerland'],
@@ -78,7 +80,7 @@ GLCDICT = {
     'RGI60-11.00872': ['glamos', 'A51d/10', 'Huefifirn', 'Switzerland'],
 
     'RGI60-11.03638': ['wgms', 354, 'Glacier de Argentiere', 'France'],
-    'RGI60-11.03643': ['wgms', 353, 'Mer de Glace (with Leschaux)',
+    'RGI60-11.03643': ['wgms', 353, 'Mer de Glace (with Glacier de Leschaux)',
                        'France'],
     'RGI60-11.03646': ['wgms', 355, 'Glacier des Bossons', 'France'],
     'RGI60-11.03684': ['wgms', 351, 'Glacier Blanc', 'France']
@@ -94,7 +96,6 @@ WGMS_RR = {
     'RGI60-11.03643': 353,
     'RGI60-11.03646': 355
 }
-
 
 
 ADDITIONAL_REFERENCE_GLACIERS = []
@@ -176,7 +177,7 @@ def configure(workdir, glclist, baselineclimate='HISTALP', resetwd=False):
     # Set to True for operational runs
     cfg.PARAMS['continue_on_error'] = False
 
-    cfg.PARAMS['use_intersects'] = False
+    cfg.PARAMS['use_intersects'] = True
     cfg.PARAMS['use_rgi_area'] = True
 
     # set negative flux filtering to false. should be standard soon
