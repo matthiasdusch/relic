@@ -122,7 +122,7 @@ def final_spinup(tbias, mb, fls, dl, len2003, delta, gdir,
     return run_ds, diag_ds
 
 
-def systematic_spinup(gdir, meta, y0=1999):
+def systematic_spinup(gdir, meta, mb_bias=None, y0=1999):
 
     # how long are we at initialization
     fls = gdir.read_pickle('model_flowlines')
@@ -137,7 +137,8 @@ def systematic_spinup(gdir, meta, y0=1999):
     mb = MultipleFlowlineMassBalance(gdir, fls=fls,
                                      mb_model_class=ConstantMassBalance,
                                      filename='climate_monthly',
-                                     y0=y0)
+                                     y0=y0,
+                                     bias=mb_bias)
 
     # coarse first test values
     totest = np.arange(-8, 3.1)

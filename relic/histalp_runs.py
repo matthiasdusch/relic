@@ -38,6 +38,7 @@ def relic_from_climate_data(gdir, ys=None, ye=None, min_ys=None,
                             **kwargs):
     """ copy of flowline.run_from_climate_data
     """
+    warnings.warn('This is deprecated.', DeprecationWarning)
 
     if ys is None:
         try:
@@ -57,27 +58,10 @@ def relic_from_climate_data(gdir, ys=None, ye=None, min_ys=None,
             fmod.run_until(init_model_yr)
             init_model_fls = fmod.fls
 
-    if mass_balance_bias is not None:
-        if '_merged' in gdir.rgi_id:
-            fls = gdir.read_pickle('model_flowlines')
-            flids = np.unique([fl.rgi_id for fl in fls])
-            for fl in flids:
-                flsfx = '_' + fl
-                df = gdir.read_json('local_mustar', filesuffix=flsfx)
-                df['bias'] += mass_balance_bias
-                gdir.write_json(df, 'local_mustar', filesuffix=flsfx)
-            # we write this to the local_mustar file so we do not need to
-            # pass it on to the MultipleFlowlineMassBalance model
-        else:
-            df = gdir.read_json('local_mustar')
-            # mass_balance_bias += df['bias']
-            df['bias'] += mass_balance_bias
-            gdir.write_json(df, 'local_mustar')
-
     mb = MultipleFlowlineMassBalance(gdir, mb_model_class=PastMassBalance,
                                      filename=climate_filename,
                                      input_filesuffix=climate_input_filesuffix,
-                                     bias=None)
+                                     bias=mass_balance_bias)
 
     return robust_model_run(gdir, output_filesuffix=output_filesuffix,
                             mb_model=mb, ys=ys, ye=ye,
@@ -96,25 +80,8 @@ def spinup_plus_histalp(gdir, meta=None, mb_bias=None, runsuffix=''):
     # we want to simulate as much as possible -> histalp till 2014
     obs_ye = 2014
 
-    # --------- take care of MASS BALANCE BIAS ---------------
-    if '_merged' in gdir.rgi_id:
-        fls = gdir.read_pickle('model_flowlines')
-        flids = np.unique([fl.rgi_id for fl in fls])
-        for fl in flids:
-            flsfx = '_' + fl
-            df = gdir.read_json('local_mustar', filesuffix=flsfx)
-            df['bias'] += mb_bias
-            gdir.write_json(df, 'local_mustar', filesuffix=flsfx)
-        # we write this to the local_mustar file so we do not need to
-        # pass it on to the MultipleFlowlineMassBalance model
-    else:
-        df = gdir.read_json('local_mustar')
-        # mass_balance_bias += df['bias']
-        df['bias'] += mb_bias
-        gdir.write_json(df, 'local_mustar')
-
     # --------- SPIN IT UP ---------------
-    tbias = systematic_spinup(gdir, meta)
+    tbias = systematic_spinup(gdir, meta, mb_bias=mb_bias)
 
     if tbias == -999:
 
@@ -132,7 +99,8 @@ def spinup_plus_histalp(gdir, meta=None, mb_bias=None, runsuffix=''):
     try:
         run_from_climate_data(gdir, ys=meta['first'], ye=obs_ye,
                               init_model_fls=tmp_mod.fls,
-                              output_filesuffix='_histalp' + runsuffix)
+                              output_filesuffix='_histalp' + runsuffix,
+                              bias=mb_bias)
     except RuntimeError as err:
         if 'Glacier exceeds domain boundaries' in err.args[0]:
             log.info('(%s) histalp run exceeded domain bounds' % gdir.rgi_id)
