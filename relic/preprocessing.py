@@ -177,7 +177,11 @@ def configure(workdir, glclist, baselineclimate='HISTALP', resetwd=False):
     # Set to True for operational runs
     cfg.PARAMS['continue_on_error'] = False
 
+    # We use intersects
     cfg.PARAMS['use_intersects'] = True
+    rgif = utils.get_rgi_intersects_region_file('11', version='60')
+    cfg.set_intersects_db(rgif)
+
     cfg.PARAMS['use_rgi_area'] = True
 
     # set negative flux filtering to false. should be standard soon
