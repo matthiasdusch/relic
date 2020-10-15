@@ -99,6 +99,7 @@ def spinup_plus_histalp(gdir, meta=None, mb_bias=None, runsuffix=''):
     try:
         run_from_climate_data(gdir, ys=meta['first'], ye=obs_ye,
                               init_model_fls=tmp_mod.fls,
+                              climate_filename='climate_monthly',
                               output_filesuffix='_histalp' + runsuffix,
                               bias=mb_bias)
     except RuntimeError as err:
