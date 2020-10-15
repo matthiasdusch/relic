@@ -187,6 +187,11 @@ def configure(workdir, glclist, baselineclimate='HISTALP', resetwd=False):
     # here in relic we want to run the mb calibration every time
     cfg.PARAMS['run_mb_calibration'] = True
 
+    # glacier length
+    cfg.PARAMS['min_ice_thick_for_length'] = 1.0
+    cfg.PARAMS['glacier_length_method'] = 'consecutive'
+
+
     # check if we want to merge a glacier
     mglclist = []
     for glc in glclist:
