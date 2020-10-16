@@ -88,10 +88,15 @@ def minimize_dl(tbias, mb, fls, dl, len2003, gdir, optimization):
                                    diag_path=diag_path)
 
 
-def final_spinup(tbias, mb, fls, dl, len2003, delta, gdir,
+def final_spinup(tbias, mbbias, y0, fls, dl, len2003, delta, gdir,
                  filesuffix='_spinup'):
     """ dont overspin it!!
     """
+    mb = MultipleFlowlineMassBalance(gdir, fls=fls,
+                                     mb_model_class=ConstantMassBalance,
+                                     filename='climate_monthly',
+                                     y0=y0,
+                                     bias=mbbias)
     # Mass balance
     mb.temp_bias = tbias
 
@@ -190,5 +195,5 @@ def systematic_spinup(gdir, meta, mb_bias=None, y0=1999):
              (gdir.rgi_id, delta, fls[-1].dx_meter))
 
     # --------- SPIN IT UP FOR REAL ---------------
-    final_spinup(tbias, mb, fls, dl, len2003, delta, gdir)
+    final_spinup(tbias, mb_bias, y0, fls, dl, len2003, delta, gdir)
     return tbias

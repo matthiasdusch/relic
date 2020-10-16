@@ -27,50 +27,6 @@ from relic import preprocessing
 log = logging.getLogger(__name__)
 
 
-@entity_task(log)
-def relic_from_climate_data(gdir, ys=None, ye=None, min_ys=None,
-                            store_monthly_step=False,
-                            climate_filename='climate_monthly',
-                            climate_input_filesuffix='', output_filesuffix='',
-                            init_model_filesuffix=None, init_model_yr=None,
-                            init_model_fls=None, zero_initial_glacier=False,
-                            mass_balance_bias=None,
-                            **kwargs):
-    """ copy of flowline.run_from_climate_data
-    """
-    warnings.warn('This is deprecated.', DeprecationWarning)
-
-    if ys is None:
-        try:
-            ys = gdir.rgi_date.year
-        except AttributeError:
-            ys = gdir.rgi_date
-    if ye is None:
-        raise InvalidParamsError('Need to set the `ye` kwarg!')
-    if min_ys is not None:
-        ys = ys if ys < min_ys else min_ys
-
-    if init_model_filesuffix is not None:
-        fp = gdir.get_filepath('model_run', filesuffix=init_model_filesuffix)
-        with FileModel(fp) as fmod:
-            if init_model_yr is None:
-                init_model_yr = fmod.last_yr
-            fmod.run_until(init_model_yr)
-            init_model_fls = fmod.fls
-
-    mb = MultipleFlowlineMassBalance(gdir, mb_model_class=PastMassBalance,
-                                     filename=climate_filename,
-                                     input_filesuffix=climate_input_filesuffix,
-                                     bias=mass_balance_bias)
-
-    return robust_model_run(gdir, output_filesuffix=output_filesuffix,
-                            mb_model=mb, ys=ys, ye=ye,
-                            store_monthly_step=store_monthly_step,
-                            init_model_fls=init_model_fls,
-                            zero_initial_glacier=zero_initial_glacier,
-                            **kwargs)
-
-
 def spinup_plus_histalp(gdir, meta=None, mb_bias=None, runsuffix=''):
     # take care of merged glaciers
     rgi_id = gdir.rgi_id.split('_')[0]
@@ -134,7 +90,7 @@ def spinup_plus_histalp(gdir, meta=None, mb_bias=None, runsuffix=''):
     rval['rel_dl'] = relative_length_change(meta, rval['spinup'],
                                             rval['histalp'])
 
-    # TODO: EXTRACT and ADD thickness information here
+    # TODO: EXTRACT and ADD thickness information here if need be
 
     # if merged, store tributary flowline change as well
     if '_merged' in gdir.rgi_id:
@@ -279,7 +235,7 @@ def multi_parameter_run(paramdict, gdirs, meta, obs, runid=None, runsuffix=''):
 
 
 def run_ensemble(allgdirs, rgi_id, ensemble, tbiasdict, allmeta,
-                 storedir, runsuffix=''):
+                 storedir, runsuffix='', spinup_y0=1999):
 
     # default glena
     default_glena = 2.4e-24
@@ -351,20 +307,17 @@ def run_ensemble(allgdirs, rgi_id, ensemble, tbiasdict, allmeta,
         delta = fls[-1].dx_meter
         len2003 = fls[-1].length_m
         dl = -meta['dL2003']
-        # mass balance model
-        log.warning('DeprecationWarning: If downloadlink is updated to ' +
-                    'gdirs_v1.2 remove filename kwarg')
-        mb = MultipleFlowlineMassBalance(gdir, fls=fls,
-                                         mb_model_class=ConstantMassBalance,
-                                         filename='climate_monthly')
 
         try:
-            final_spinup(tbiasdict[run], mb, fls, dl, len2003, delta, gdir,
+            final_spinup(tbiasdict[run], mbbias, spinup_y0,
+                         fls, dl, len2003, delta, gdir,
                          filesuffix='spinup_{:02d}'.format(nr))
         except RuntimeError:
             log.warning('Delta > 1x fl dx ({:.2f}), using 2x'.format(delta))
-            final_spinup(tbiasdict[run], mb, fls, dl, len2003, delta*2, gdir,
-                         filesuffix='spinup_{:02d}'.format(nr))
+            final_spinup(tbiasdict[run], mbbias, spinup_y0,
+                         fls, dl, len2003,
+                         delta*2,
+                         gdir, filesuffix='spinup_{:02d}'.format(nr))
 
         # histalp
         # --------- GET SPINUP STATE ---------------
@@ -375,30 +328,14 @@ def run_ensemble(allgdirs, rgi_id, ensemble, tbiasdict, allmeta,
         tmp_mod.run_until(tmp_mod.last_yr)
 
         # --------- HIST IT DOWN ---------------
-        # take care of mass balance bias
-        # take care of mass balance bias:
-        if '_merged' in gdir.rgi_id:
-            fls = gdir.read_pickle('model_flowlines')
-            flids = np.unique([fl.rgi_id for fl in fls])
-            for fl in flids:
-                flsfx = '_' + fl
-                df = gdir.read_json('local_mustar', filesuffix=flsfx)
-                df['bias'] += mbbias
-                gdir.write_json(df, 'local_mustar', filesuffix=flsfx)
-            # we write this to the local_mustar file so we do not need to
-            # pass it on to the MultipleFlowlineMassBalance model
-        else:
-            df = gdir.read_json('local_mustar')
-            # mass_balance_bias += df['bias']
-            df['bias'] += mbbias
-            gdir.write_json(df, 'local_mustar')
-
         histrunsuffix = 'histalp{}_{:02d}'.format(runsuffix, nr)
 
         # now actual simulation
         run_from_climate_data(gdir, ys=meta['first'], ye=2014,
                               init_model_fls=tmp_mod.fls,
-                              output_filesuffix=histrunsuffix)
+                              output_filesuffix=histrunsuffix,
+                              climate_filename='climate_monthly',
+                              bias=mbbias)
 
         # save the calibration parameter to the climate info file
         out = gdir.get_climate_info()

@@ -43,6 +43,7 @@ def run_and_store_from_disk(rgi, histalp_storage, commit_storage, y0=1999,
         default_glena = 2.4e-24
         cfg.PARAMS['glen_a'] = pdict['glena_factor'] * default_glena
         cfg.PARAMS['inversion_glen_a'] = pdict['glena_factor'] * default_glena
+        mbbias = pdict['mbbias']
 
         tmp_mod = FileModel(
             gdir.get_filepath('model_run',
@@ -52,7 +53,7 @@ def run_and_store_from_disk(rgi, histalp_storage, commit_storage, y0=1999,
         mb = MultipleFlowlineMassBalance(gdir,
                                          mb_model_class=RandomMassBalance,
                                          filename='climate_monthly',
-                                         bias=None, y0=y0, seed=seed,
+                                         bias=mbbias, y0=y0, seed=seed,
                                          unique_samples=unique_samples,
                                          halfsize=halfsize)
 

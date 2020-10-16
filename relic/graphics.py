@@ -151,7 +151,7 @@ def past_simulation_and_params(glcdict, pout, y_len=5):
 
         fig = plt.figure(figsize=[23, 8])
 
-        gs = GridSpec(1, 4)  # 3 rows, 3 columns
+        gs = GridSpec(1, 4)  # 1 rows, 4 columns
 
         ax1 = fig.add_subplot(gs[0, 0:3])
         ax2 = fig.add_subplot(gs[0, 3])
@@ -265,13 +265,15 @@ def past_simulation_and_params(glcdict, pout, y_len=5):
                              '0.2', '0.6', '1.0'])
         ax3.tick_params(axis='both', which='major', labelsize=16)
 
-        # fig1.subplots_adjust(right=0.7)
-        fig.tight_layout()
+        fig.subplots_adjust(left=0.07, right=0.96, bottom=0.24, top=0.93,
+                            wspace=0.5)
+        #fig.tight_layout(h_pad=0.0)
+
         fn1 = os.path.join(pout, 'histalp_%s.png' % glid)
         fig.savefig(fn1)
 
         used = dict()
-        used['oggmdefault'] = oggmdefault
+        # used['oggmdefault'] = oggmdefault
         used['minmae'] = idx2plot2[0]
         used['ensemble'] = idx2plot2
 

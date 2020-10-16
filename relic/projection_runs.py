@@ -50,6 +50,7 @@ def run_and_store_from_disk(rgi, histalp_storage, storage):
         default_glena = 2.4e-24
         cfg.PARAMS['glen_a'] = pdict['glena_factor'] * default_glena
         cfg.PARAMS['inversion_glen_a'] = pdict['glena_factor'] * default_glena
+        mbbias = pdict['mbbias']
 
         tmp_mod = FileModel(
             gdir.get_filepath('model_run',
@@ -84,7 +85,8 @@ def run_and_store_from_disk(rgi, histalp_storage, storage):
                                       climate_filename='gcm_data',
                                       climate_input_filesuffix=rid,
                                       init_model_fls=tmp_mod.fls,
-                                      output_filesuffix=rid_out
+                                      output_filesuffix=rid_out,
+                                      bias=mbbias
                                       )
 
                 fn1 = 'model_diagnostics{}.nc'.format(rid_out)
