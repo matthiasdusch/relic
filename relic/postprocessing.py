@@ -159,7 +159,6 @@ def optimize_cov(_runs, obs, glid, minuse=5):
     # list which indices to use
     maestart = mae_weighted(pd.concat([obs, runs], axis=1)).sort_values()
 
-    #use = maestart.index[:minuse].to_list()
     use = [maestart.index[0]]
 
     while True:

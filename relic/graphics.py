@@ -142,13 +142,6 @@ def past_simulation_and_params(glcdict, tribdict, pout, y_len=5):
         # take care of merged glaciers
         rgi_id = glid.split('_')[0]
 
-        # if rgi_id != 'RGI60-11.03643':
-        #    continue
-
-        # if (rgi_id != 'RGI60-11.01450') and (rgi_id != 'RGI60-11.02051') and (rgi_id != 'RGI60-11.01270') and (rgi_id != 'RGI60-11.03643') and (rgi_id != 'RGI60-11.00897'):
-        #    #if (rgi_id != 'RGI60-11.02755') and (rgi_id != 'RGI60-11.03646'):
-        #    continue
-
         fig = plt.figure(figsize=[23, 8])
 
         gs = GridSpec(1, 4)  # 1 rows, 4 columns
@@ -172,47 +165,27 @@ def past_simulation_and_params(glcdict, tribdict, pout, y_len=5):
                                 label='HISTALP climate (OGGM default parameters run)')
                 oggmdefault = run
 
-        # remove runs with to long tributaries:
-        if ('_merged' in glid) and ('897' in glid):
-            trib = tribdict[glid]
-            from relic.preprocessing import merge_pair_dict
-            y0 = merge_pair_dict(rgi_id)[2]
-            toolong = (trib.loc[y0+20:] == 0).any()
-            df.drop(toolong.index[toolong], axis=1, inplace=True)
-            trib.drop(toolong.index[toolong], axis=1, inplace=True)
-            tooshort = (trib.loc[:y0-20] < 0).any()
-            df.drop(tooshort.index[tooshort], axis=1, inplace=True)
-            print('{}: removed {} runs'.format(glid,
-                                               (len(toolong.index[toolong]) +
-                                                len(tooshort.index[tooshort])))
-                  )
-        else:
-            continue
-
         maes = mae_weighted(df).sort_values()
 
-        idx2plot2 = optimize_cov(df.loc[:, maes.index[:150]],
-                                 df.loc[:, 'obs'], glid, minuse=5)
-        # idx2plot2 = optimize_cov2(df.loc[:, df.columns != 'obs'], df.loc[:, 'obs'], glid, minuse=5)
+        idx2plot = optimize_cov(df.loc[:, maes.index[:150]],
+                                df.loc[:, 'obs'], glid, minuse=5)
 
-        ensmean = df.loc[:, idx2plot2].mean(axis=1)
+        ensmean = df.loc[:, idx2plot].mean(axis=1)
         ensmeanmean = ensmean.rolling(y_len, center=True).mean()
-        ensstdmean = df.loc[:, idx2plot2].std(axis=1).rolling(y_len,
+        ensstdmean = df.loc[:, idx2plot].std(axis=1).rolling(y_len,
                                                               center=True).mean()
 
         # coverage
-        cov = calc_coverage(df, idx2plot2, df['obs'])
+        cov = calc_coverage(df, idx2plot, df['obs'])
 
         #ax1.fill_between(ensmeanmean.index, ensmeanmean - ensstdmean,
         #                 ensmeanmean + ensstdmean, color='xkcd:teal', alpha=0.5)
 
         # nolbl = df.loc[:, idx2plot2].rolling(y_len, center=True).mean().copy()
         # nolbl.columns = ['' for i in range(len(nolbl.columns))]
-        df.loc[:, idx2plot2].rolling(y_len, center=True).mean().plot(
-            ax=ax1, linewidth=0.8)
 
-        #ax1.plot(0, 0, color='C0', linewidth=10,
-        #         label='ensemble mean +/- 1 std', alpha=0.5)
+        #df.loc[:, idx2plot2].rolling(y_len, center=True).mean().plot(
+        #    ax=ax1, linewidth=0.8)
 
         # plot ens members
         ensmeanmean.plot(ax=ax1, linewidth=4.0, color='xkcd:teal',
@@ -233,7 +206,7 @@ def past_simulation_and_params(glcdict, tribdict, pout, y_len=5):
                               '    coverage = %.2f\n'
                               'wMAE enselbe = %.2f  '
                               '  wMAE best = %.2f' %
-                 (len(idx2plot2), cov, mae_ens,
+                 (len(idx2plot), cov, mae_ens,
                   mae_best), fontsize=18)
         ax1.set_ylabel('relative length change [m]', fontsize=26)
         ax1.set_xlabel('Year', fontsize=26)
@@ -247,17 +220,12 @@ def past_simulation_and_params(glcdict, tribdict, pout, y_len=5):
 
         # parameter plots
         from colorspace import sequential_hcl
-        #col = sequential_hcl('Blues 3').colors(len(idx2plot2) + 3)
-        col = sequential_hcl('Blue-Yellow').colors(len(idx2plot2) + 3)
-        for i, run in enumerate(idx2plot2):
+        col = sequential_hcl('Blue-Yellow').colors(len(idx2plot) + 3)
+        for i, run in enumerate(idx2plot):
             para = ast.literal_eval('{' + run + '}')
             psf = para['prcp_scaling_factor']
-            #psf = (psf - 0.5) / (4 - 0.5)
             gla = para['glena_factor']
-            #gla = (gla - 1) / (4 - 1.0)
             mbb = para['mbbias']
-            # mbb = (mbb - -1400) / (1000 - -1400)
-            # scall mbb to range 0.5-4
             mbb = (mbb - -1400) * (4-0.5) / (1000 - -1400) + 0.5
 
             ax2.plot([1, 2, 3], [psf, gla, mbb], color=col[i], linewidth=2)
@@ -285,15 +253,14 @@ def past_simulation_and_params(glcdict, tribdict, pout, y_len=5):
 
         fig.subplots_adjust(left=0.07, right=0.96, bottom=0.24, top=0.93,
                             wspace=0.5)
-        #fig.tight_layout(h_pad=0.0)
 
         fn1 = os.path.join(pout, 'histalp_%s.png' % glid)
         fig.savefig(fn1)
 
         used = dict()
-        # used['oggmdefault'] = oggmdefault
-        used['minmae'] = idx2plot2[0]
-        used['ensemble'] = idx2plot2
+        used['oggmdefault'] = oggmdefault
+        used['minmae'] = idx2plot[0]
+        used['ensemble'] = idx2plot
 
         pickle.dump(used, open(os.path.join(pout, 'runs_%s.p' % glid), 'wb'))
 

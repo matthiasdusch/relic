@@ -7,7 +7,7 @@ from oggm.workflow import execute_entity_task
 from oggm import entity_task
 from oggm.utils import get_ref_mb_glaciers_candidates
 
-from relic import length_observations  as lob
+from relic import length_observations as lob
 
 
 import logging
@@ -20,17 +20,18 @@ MERGEDICT = {
              'RGI60-11.02709': [['RGI60-11.02715'], 2.5, 1956],
              # Venedigerkees (Obersulzbachkees)
              'RGI60-11.00116': [['RGI60-11.00141', 'RGI60-11.00168',
-                                 'RGI60-11.00127'], 10.5, 2000],
+                                 'RGI60-11.00127'], 8],
+
              # Mer de Glace: Leschaux
              'RGI60-11.03643': [['RGI60-11.03642'], 7.5, 2020],
              # Großer Aletsch: Mittelaletsch
-             'RGI60-11.01450': [['RGI60-11.01797'], 6, 1970],
+             'RGI60-11.01450': [['RGI60-11.01797'], 8],
              # HEF: KWF
-             'RGI60-11.00897': [['RGI60-11.00787'], 5, 1920],
+             #'RGI60-11.00897': [['RGI60-11.00787'], 5],
              # Pasterze: Waserfall, Hofmann
-             'RGI60-11.00106': [['RGI60-11.00122', 'RGI60-11.00213'], 8.5, 1950],
+             'RGI60-11.00106': [['RGI60-11.00122', 'RGI60-11.00213'], 10],
              # Huefifirn
-             'RGI60-11.00872': [['RGI60-11.00981'], 2.5, 1970]
+             'RGI60-11.00872': [['RGI60-11.00981'], 8]
             }
 
 # stores [observation source, source ID, Plotname]
@@ -40,8 +41,7 @@ GLCDICT = {
     'RGI60-11.00687': ['wgms', 519, 'Taschachferner', 'Austria'],
     'RGI60-11.00746': ['wgms', 522, 'Gepatschferner', 'Austria'],
     'RGI60-11.00887': ['wgms', 511, 'Gurgler Ferner', 'Austria'],
-    'RGI60-11.00897': ['wgms', 491, 'Hintereisferner (with Kesselwandferner)',
-                       'Austria'],
+    'RGI60-11.00897': ['wgms', 491, 'Hintereisferner', 'Austria'],
 
     'RGI60-11.01238': ['glamos', 'B43/03', 'Rhonegletscher', 'Switzerland'],
     'RGI60-11.01270': ['glamos', 'A54l/04', 'Oberer Grindelwaldgletscher',
