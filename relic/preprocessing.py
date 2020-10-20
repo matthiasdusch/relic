@@ -15,22 +15,22 @@ log = logging.getLogger(__name__)
 
 MERGEDICT = {
              # Tschierva: Roseg
-             'RGI60-11.02051': [['RGI60-11.02119'], 8],
+             'RGI60-11.02051': [['RGI60-11.02119'], 8, 1944],
              # Mine: ferpecle
-             'RGI60-11.02709': [['RGI60-11.02715'], 2.5],
+             'RGI60-11.02709': [['RGI60-11.02715'], 2.5, 1956],
              # Venedigerkees (Obersulzbachkees)
              'RGI60-11.00116': [['RGI60-11.00141', 'RGI60-11.00168',
-                                 'RGI60-11.00127'], 10.5],
+                                 'RGI60-11.00127'], 10.5, 2000],
              # Mer de Glace: Leschaux
-             'RGI60-11.03643': [['RGI60-11.03642'], 7.5],
+             'RGI60-11.03643': [['RGI60-11.03642'], 7.5, 2020],
              # Großer Aletsch: Mittelaletsch
-             'RGI60-11.01450': [['RGI60-11.01797'], 6],
+             'RGI60-11.01450': [['RGI60-11.01797'], 6, 1970],
              # HEF: KWF
-             'RGI60-11.00897': [['RGI60-11.00787'], 5],
+             'RGI60-11.00897': [['RGI60-11.00787'], 5, 1920],
              # Pasterze: Waserfall, Hofmann
-             'RGI60-11.00106': [['RGI60-11.00122', 'RGI60-11.00213'], 8.5],
+             'RGI60-11.00106': [['RGI60-11.00122', 'RGI60-11.00213'], 8.5, 1950],
              # Huefifirn
-             'RGI60-11.00872': [['RGI60-11.00981'], 2.5]
+             'RGI60-11.00872': [['RGI60-11.00981'], 2.5, 1970]
             }
 
 # stores [observation source, source ID, Plotname]

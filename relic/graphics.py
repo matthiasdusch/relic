@@ -136,7 +136,7 @@ def paramplots(df, glid, pout, y_len=None):
     fig1.savefig(fn1)
 
 
-def past_simulation_and_params(glcdict, pout, y_len=5):
+def past_simulation_and_params(glcdict, tribdict, pout, y_len=5):
     for glid, df in glcdict.items():
 
         # take care of merged glaciers
@@ -172,10 +172,27 @@ def past_simulation_and_params(glcdict, pout, y_len=5):
                                 label='HISTALP climate (OGGM default parameters run)')
                 oggmdefault = run
 
+        # remove runs with to long tributaries:
+        if ('_merged' in glid) and ('897' in glid):
+            trib = tribdict[glid]
+            from relic.preprocessing import merge_pair_dict
+            y0 = merge_pair_dict(rgi_id)[2]
+            toolong = (trib.loc[y0+20:] == 0).any()
+            df.drop(toolong.index[toolong], axis=1, inplace=True)
+            trib.drop(toolong.index[toolong], axis=1, inplace=True)
+            tooshort = (trib.loc[:y0-20] < 0).any()
+            df.drop(tooshort.index[tooshort], axis=1, inplace=True)
+            print('{}: removed {} runs'.format(glid,
+                                               (len(toolong.index[toolong]) +
+                                                len(tooshort.index[tooshort])))
+                  )
+        else:
+            continue
+
         maes = mae_weighted(df).sort_values()
 
         idx2plot2 = optimize_cov(df.loc[:, maes.index[:150]],
-                                  df.loc[:, 'obs'], glid, minuse=5)
+                                 df.loc[:, 'obs'], glid, minuse=5)
         # idx2plot2 = optimize_cov2(df.loc[:, df.columns != 'obs'], df.loc[:, 'obs'], glid, minuse=5)
 
         ensmean = df.loc[:, idx2plot2].mean(axis=1)
@@ -186,12 +203,13 @@ def past_simulation_and_params(glcdict, pout, y_len=5):
         # coverage
         cov = calc_coverage(df, idx2plot2, df['obs'])
 
-        ax1.fill_between(ensmeanmean.index, ensmeanmean - ensstdmean,
-                         ensmeanmean + ensstdmean, color='xkcd:teal', alpha=0.5)
+        #ax1.fill_between(ensmeanmean.index, ensmeanmean - ensstdmean,
+        #                 ensmeanmean + ensstdmean, color='xkcd:teal', alpha=0.5)
 
         # nolbl = df.loc[:, idx2plot2].rolling(y_len, center=True).mean().copy()
         # nolbl.columns = ['' for i in range(len(nolbl.columns))]
-        # nolbl.plot(ax=ax1, linewidth=0.8, color='C0')
+        df.loc[:, idx2plot2].rolling(y_len, center=True).mean().plot(
+            ax=ax1, linewidth=0.8)
 
         #ax1.plot(0, 0, color='C0', linewidth=10,
         #         label='ensemble mean +/- 1 std', alpha=0.5)

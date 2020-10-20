@@ -36,6 +36,26 @@ def spinup_plus_histalp(gdir, meta=None, mb_bias=None, runsuffix=''):
     # we want to simulate as much as possible -> histalp till 2014
     obs_ye = 2014
 
+    # <<<<<<<<<<<<<<<<<<<<<
+    # --------- take care of MASS BALANCE BIAS ---------------
+    if '_merged' in gdir.rgi_id:
+        fls = gdir.read_pickle('model_flowlines')
+        flids = np.unique([fl.rgi_id for fl in fls])
+        for fl in flids:
+            flsfx = '_' + fl
+            df = gdir.read_json('local_mustar', filesuffix=flsfx)
+            df['bias'] += mb_bias
+            gdir.write_json(df, 'local_mustar', filesuffix=flsfx)
+        # we write this to the local_mustar file so we do not need to
+        # pass it on to the MultipleFlowlineMassBalance model
+    else:
+        df = gdir.read_json('local_mustar')
+        # mass_balance_bias += df['bias']
+        df['bias'] += mb_bias
+        gdir.write_json(df, 'local_mustar')
+    mb_bias = None
+    # >>>>>>>>>>>>>>>>>>>>>>
+
     # --------- SPIN IT UP ---------------
     tbias = systematic_spinup(gdir, meta, mb_bias=mb_bias)
 
@@ -206,7 +226,7 @@ def multi_parameter_run(paramdict, gdirs, meta, obs, runid=None, runsuffix=''):
                              gd.rgi_id not in [gid] + merg[0]]
 
                 # uncomment to visually inspect the merged glacier
-                """
+
                 import matplotlib.pyplot as plt
                 from oggm import graphics
                 import os
@@ -214,7 +234,7 @@ def multi_parameter_run(paramdict, gdirs, meta, obs, runid=None, runsuffix=''):
                 graphics.plot_centerlines(gdir_merged,
                                           use_model_flowlines=True, ax=ax)
                 f.savefig(os.path.join(cfg.PATHS['working_dir'], gid) + '.png')
-                """
+
                 gdirs_merged.append(gdir_merged)
 
         # add merged glaciers to the left over entity glaciers
@@ -313,6 +333,7 @@ def run_ensemble(allgdirs, rgi_id, ensemble, tbiasdict, allmeta,
                          fls, dl, len2003, delta, gdir,
                          filesuffix='spinup_{:02d}'.format(nr))
         except RuntimeError:
+            continue
             log.warning('Delta > 1x fl dx ({:.2f}), using 2x'.format(delta))
             final_spinup(tbiasdict[run], mbbias, spinup_y0,
                          fls, dl, len2003,

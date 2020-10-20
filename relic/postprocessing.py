@@ -42,7 +42,7 @@ def mae_weighted(_df):
     return maeall
 
 
-def runs2df(runs, min_pcpsf=0, skip_bossons_mdg=False):
+def runs2df(runs, min_pcpsf=0):
 
     # get all glaciers
     glcs = []
@@ -60,17 +60,18 @@ def runs2df(runs, min_pcpsf=0, skip_bossons_mdg=False):
 
     tbiasdict = {}
 
+    tribdict = {}
+
     for rgi, mrgi in zip(rgi_ids, glcs):
         _meta = meta.loc[rgi].copy()
         _data = data.loc[rgi].copy()
-
-        if skip_bossons_mdg and ((rgi == 'RGI60-11.03646') or (rgi == 'RGI60-11.03643')):
-            continue
 
         df = pd.DataFrame([], index=np.arange(1850, 2020))
         df.loc[_data.index, 'obs'] = _data
 
         tbias_series = pd.Series([])
+
+        trib = pd.DataFrame([], index=np.arange(1850, 2020))
 
         for nr, run in enumerate(runs):
             rlist = list(run.values())[0]
@@ -90,13 +91,18 @@ def runs2df(runs, min_pcpsf=0, skip_bossons_mdg=False):
                 continue
 
             df.loc[rdic['rel_dl'].index, rkey] = rdic['rel_dl'].values
+            try:
+                trib.loc[rdic['trib_dl'].index, rkey] = rdic['trib_dl'].values
+            except:
+                pass
 
             tbias_series[rkey] = rdic['tbias']
 
         glcdict[mrgi] = df
         tbiasdict[mrgi] = tbias_series
+        tribdict[mrgi] = trib
 
-    return glcdict, tbiasdict
+    return glcdict, tbiasdict, tribdict
 
 
 def coverage_loop(df, use, obs):
