@@ -15,15 +15,14 @@ log = logging.getLogger(__name__)
 
 MERGEDICT = {
              # Tschierva: Roseg
-             'RGI60-11.02051': [['RGI60-11.02119'], 8, 1944],
+             'RGI60-11.02051': [['RGI60-11.02119'], 8],
              # Mine: ferpecle
-             'RGI60-11.02709': [['RGI60-11.02715'], 2.5, 1956],
+             'RGI60-11.02709': [['RGI60-11.02715'], 2.5],
              # Venedigerkees (Obersulzbachkees)
              'RGI60-11.00116': [['RGI60-11.00141', 'RGI60-11.00168',
                                  'RGI60-11.00127'], 8],
-
              # Mer de Glace: Leschaux
-             'RGI60-11.03643': [['RGI60-11.03642'], 7.5, 2020],
+             'RGI60-11.03643': [['RGI60-11.03642'], 7.5],
              # Großer Aletsch: Mittelaletsch
              'RGI60-11.01450': [['RGI60-11.01797'], 8],
              # HEF: KWF
