@@ -165,6 +165,7 @@ def past_simulation_and_params(glcdict, tribdict, pout, y_len=5):
                                 label='HISTALP climate (OGGM default parameters run)')
                 oggmdefault = run
 
+
         maes = mae_weighted(df).sort_values()
 
         idx2plot = optimize_cov(df.loc[:, maes.index[:150]],
@@ -178,12 +179,11 @@ def past_simulation_and_params(glcdict, tribdict, pout, y_len=5):
         # coverage
         cov = calc_coverage(df, idx2plot, df['obs'])
 
-        #ax1.fill_between(ensmeanmean.index, ensmeanmean - ensstdmean,
-        #                 ensmeanmean + ensstdmean, color='xkcd:teal', alpha=0.5)
+        ax1.fill_between(ensmeanmean.index, ensmeanmean - ensstdmean,
+                         ensmeanmean + ensstdmean, color='xkcd:teal', alpha=0.5)
 
         # nolbl = df.loc[:, idx2plot2].rolling(y_len, center=True).mean().copy()
         # nolbl.columns = ['' for i in range(len(nolbl.columns))]
-
         #df.loc[:, idx2plot2].rolling(y_len, center=True).mean().plot(
         #    ax=ax1, linewidth=0.8)
 

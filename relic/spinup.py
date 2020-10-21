@@ -36,7 +36,7 @@ def minimize_dl(tbias, mb, fls, dl, len2003, gdir, optimization):
     model = FluxBasedModel(fls, mb_model=mb)
 
     try:
-        relic_run_until_equilibrium(model,max_ite=200)
+        relic_run_until_equilibrium(model, max_ite=200)
     except ValueError:
         log.info('(%s) tbias of %.2f did exceed max iterations (def 1000yrs)' %
                  (gdir.rgi_id, tbias))
