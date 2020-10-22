@@ -329,7 +329,6 @@ def run_ensemble(allgdirs, rgi_id, ensemble, tbiasdict, allmeta,
                          fls, dl, len2003, delta, gdir,
                          filesuffix='spinup_{:02d}'.format(nr))
         except RuntimeError:
-            continue
             log.warning('Delta > 1x fl dx ({:.2f}), using 2x'.format(delta))
             final_spinup(tbiasdict[run], mbbias, spinup_y0,
                          fls, dl, len2003,
