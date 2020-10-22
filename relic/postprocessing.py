@@ -4,6 +4,9 @@ import ast
 from copy import deepcopy
 
 from relic.length_observations import get_length_observations
+from relic.preprocessing import GLCDICT, MERGEDICT
+
+from oggm import utils
 
 
 def relative_length_change(meta, spinup, histrun):
@@ -207,3 +210,61 @@ def optimize_cov(_runs, obs, glid, minuse=5):
         if len(use) == 30:
             # that is enough and should not happend anywys
             raise ValueError('that should not happen')
+
+
+def glacier_to_table(outpath):
+
+    df = pd.DataFrame([], index=GLCDICT.keys())
+
+    poldict = {'Switzerland': 'CH',
+               'Austria': 'AT',
+               'Italy': 'IT',
+               'France': 'FR'}
+
+    rgidf = utils.get_rgi_glacier_entities(df.index)
+    meta, _ = get_length_observations(df.index)
+
+    for rgi, _ in df.iterrows():
+        name = GLCDICT[rgi][2].split('(')[0]
+        df.loc[rgi, 'name'] = name
+        df.loc[rgi, 'state'] = poldict[GLCDICT[rgi][3]]
+        df.loc[rgi, 'lat/lon'] = '{:.2f}/{:.2f}'.\
+            format(rgidf.loc[rgidf.RGIId == rgi, 'CenLon'].iloc[0],
+                   rgidf.loc[rgidf.RGIId == rgi, 'CenLat'].iloc[0])
+
+        df.loc[rgi, 'merge'] = 'no'
+        area = rgidf.loc[rgidf.RGIId == rgi, 'Area'].iloc[0]
+
+        if MERGEDICT.get(rgi):
+            df.loc[rgi, 'merge'] = 'yes'
+            tribs = MERGEDICT[rgi][0]
+            tribdf = utils.get_rgi_glacier_entities(tribs)
+            for trib in tribs:
+                area += tribdf.loc[tribdf.RGIId == trib, 'Area'].iloc[0]
+
+        df.loc[rgi, 'area [insert km2]'] = '{:.1f}'.\
+            format(area)
+        df.loc[rgi, '1.obs'] = meta.loc[rgi, 'first']
+        df.loc[rgi, '#obs'] = meta.loc[rgi, 'measurements']
+
+    df.loc[:, '1.obs'] = df.loc[:, '1.obs'].astype(int)
+    df.loc[:, '#obs'] = df.loc[:, '#obs'].astype(int)
+
+    df = df.sort_values('name')
+
+    # ---------------
+    # generate table
+    tbl = df.to_latex(na_rep='--', index=False, longtable=True,
+                      column_format=2 * 'l' + 'r' + 'l' + 3 * 'r')
+    # add title
+    titl = ('\n\\caption{A list of all glaciers used for this study. '
+            '\\emph{merge} indicates if'
+            ' a glacier has additional tributary glaciers merged to it. '
+            '\\emph{area} then does include these tributaries. '
+            '\\emph{1.obs} refers to the first observation after 1850 and'
+            ' the number of observations \\emph{\#obs} is counted until '
+            '2020.}\\\\\n'
+            '\\label{tbl:glaciers}\\\\\n')
+    tbl = tbl.replace('\n', titl, 1)
+    with open(outpath, 'w') as tf:
+        tf.write(tbl)
