@@ -26,7 +26,7 @@ MERGEDICT = {
              # Großer Aletsch: Mittelaletsch
              'RGI60-11.01450': [['RGI60-11.01797'], 8],
              # HEF: KWF
-             #'RGI60-11.00897': [['RGI60-11.00787'], 5],
+             # 'RGI60-11.00897': [['RGI60-11.00787'], 5],
              # Pasterze: Waserfall, Hofmann
              'RGI60-11.00106': [['RGI60-11.00122', 'RGI60-11.00213'], 10],
              # Huefifirn

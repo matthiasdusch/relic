@@ -10,10 +10,12 @@ from oggm import tasks, cfg
 from oggm.core.flowline import (FileModel, run_from_climate_data)
 from oggm.workflow import execute_entity_task, merge_glacier_tasks
 from oggm.core.climate import compute_ref_t_stars
+from oggm.core.massbalance import (MultipleFlowlineMassBalance,
+                                   ConstantMassBalance)
 from oggm import GlacierDirectory
 from oggm.utils import copy_to_basedir, mkdir
 
-from relic.spinup import systematic_spinup, final_spinup
+from relic.spinup import systematic_spinup, minimize_dl
 from relic.preprocessing import merge_pair_dict
 from relic.postprocessing import relative_length_change
 
@@ -31,26 +33,6 @@ def spinup_plus_histalp(gdir, meta=None, mb_bias=None, runsuffix=''):
     meta = meta.loc[rgi_id].copy()
     # we want to simulate as much as possible -> histalp till 2014
     obs_ye = 2014
-
-    # <<<<<<<<<<<<<<<<<<<<<
-    # --------- take care of MASS BALANCE BIAS ---------------
-    if '_merged' in gdir.rgi_id:
-        fls = gdir.read_pickle('model_flowlines')
-        flids = np.unique([fl.rgi_id for fl in fls])
-        for fl in flids:
-            flsfx = '_' + fl
-            df = gdir.read_json('local_mustar', filesuffix=flsfx)
-            df['bias'] += mb_bias
-            gdir.write_json(df, 'local_mustar', filesuffix=flsfx)
-        # we write this to the local_mustar file so we do not need to
-        # pass it on to the MultipleFlowlineMassBalance model
-    else:
-        df = gdir.read_json('local_mustar')
-        # mass_balance_bias += df['bias']
-        df['bias'] += mb_bias
-        gdir.write_json(df, 'local_mustar')
-    mb_bias = None
-    # >>>>>>>>>>>>>>>>>>>>>>
 
     # --------- SPIN IT UP ---------------
     tbias = systematic_spinup(gdir, meta, mb_bias=mb_bias)
@@ -106,8 +88,6 @@ def spinup_plus_histalp(gdir, meta=None, mb_bias=None, runsuffix=''):
     rval['rel_dl'] = relative_length_change(meta, rval['spinup'],
                                             rval['histalp'])
 
-    # TODO: EXTRACT and ADD thickness information here if need be
-
     # if merged, store tributary flowline change as well
     if '_merged' in gdir.rgi_id:
 
@@ -140,13 +120,8 @@ def multi_parameter_run(paramdict, gdirs, meta, obs, runid=None, runsuffix=''):
     log.info('Multi parameter run with >>> %s <<< parameters started.' %
              len(paramcombi))
 
-    # set some default parameters which might be changed by the paramdict
-    # set mass balance bias to None, will be changed if passed as a parameter
-    mbbias = None
     # default glena
     default_glena = 2.4e-24
-    # default sliding
-    default_fs = 5.7e-20
 
     # if a runid is passed, run only this item in the paramcombi
     # runids (= SLURM JOBID) start at 1 !
@@ -172,9 +147,6 @@ def multi_parameter_run(paramdict, gdirs, meta, obs, runid=None, runsuffix=''):
                 mbbias = val
             elif key == 'prcp_scaling_factor':
                 cfg.PARAMS['prcp_scaling_factor'] = val
-            elif key == 'sliding_factor':
-                cfg.PARAMS['fs'] = val * default_fs
-                cfg.PARAMS['inversion_fs'] = val * default_fs
             else:
                 raise ValueError('Parameter not understood')
 
@@ -222,7 +194,7 @@ def multi_parameter_run(paramdict, gdirs, meta, obs, runid=None, runsuffix=''):
                              gd.rgi_id not in [gid] + merg[0]]
 
                 # uncomment to visually inspect the merged glacier
-
+                """
                 import matplotlib.pyplot as plt
                 from oggm import graphics
                 import os
@@ -230,6 +202,7 @@ def multi_parameter_run(paramdict, gdirs, meta, obs, runid=None, runsuffix=''):
                 graphics.plot_centerlines(gdir_merged,
                                           use_model_flowlines=True, ax=ax)
                 f.savefig(os.path.join(cfg.PATHS['working_dir'], gid) + '.png')
+                """
 
                 gdirs_merged.append(gdir_merged)
 
@@ -320,31 +293,25 @@ def run_ensemble(allgdirs, rgi_id, ensemble, tbiasdict, allmeta,
 
         # spinup
         fls = gdir.read_pickle('model_flowlines')
-        delta = fls[-1].dx_meter
-        len2003 = fls[-1].length_m
-        dl = -meta['dL2003']
-
-        try:
-            final_spinup(tbiasdict[run], mbbias, spinup_y0,
-                         fls, dl, len2003, delta, gdir,
-                         filesuffix='spinup_{:02d}'.format(nr))
-        except RuntimeError:
-            log.warning('Delta > 1x fl dx ({:.2f}), using 2x'.format(delta))
-            final_spinup(tbiasdict[run], mbbias, spinup_y0,
-                         fls, dl, len2003,
-                         delta*2,
-                         gdir, filesuffix='spinup_{:02d}'.format(nr))
+        tbias = tbiasdict[run]
+        mb = MultipleFlowlineMassBalance(gdir, fls=fls,
+                                         mb_model_class=ConstantMassBalance,
+                                         filename='climate_monthly',
+                                         y0=spinup_y0,
+                                         bias=mbbias)
+        minimize_dl(tbias, mb, fls, None, None, gdir, False,
+                    runsuffix='_{:02d}'.format(nr))
 
         # histalp
         # --------- GET SPINUP STATE ---------------
         tmp_mod = FileModel(
             gdir.get_filepath('model_run',
-                              filesuffix='spinup_{:02d}'.format(nr)))
+                              filesuffix='_spinup_{:02d}'.format(nr)))
 
         tmp_mod.run_until(tmp_mod.last_yr)
 
         # --------- HIST IT DOWN ---------------
-        histrunsuffix = 'histalp{}_{:02d}'.format(runsuffix, nr)
+        histrunsuffix = '_histalp{}_{:02d}'.format(runsuffix, nr)
 
         # now actual simulation
         run_from_climate_data(gdir, ys=meta['first'], ye=2014,
@@ -372,10 +339,10 @@ def run_ensemble(allgdirs, rgi_id, ensemble, tbiasdict, allmeta,
         fn1 = 'model_diagnostics_spinup_{:02d}.nc'.format(nr)
         shutil.copyfile(
             gdir.get_filepath('model_diagnostics',
-                              filesuffix='spinup_{:02d}'.format(nr)),
+                              filesuffix='_spinup_{:02d}'.format(nr)),
             os.path.join(deep_path, fn1))
 
-        fn2 = 'model_diagnostics_{}.nc'.format(histrunsuffix)
+        fn2 = 'model_diagnostics{}.nc'.format(histrunsuffix)
         shutil.copyfile(
             gdir.get_filepath('model_diagnostics', filesuffix=histrunsuffix),
             os.path.join(deep_path, fn2))
@@ -383,10 +350,10 @@ def run_ensemble(allgdirs, rgi_id, ensemble, tbiasdict, allmeta,
         fn3 = 'model_run_spinup_{:02d}.nc'.format(nr)
         shutil.copyfile(
             gdir.get_filepath('model_run',
-                              filesuffix='spinup_{:02d}'.format(nr)),
+                              filesuffix='_spinup_{:02d}'.format(nr)),
             os.path.join(deep_path, fn3))
 
-        fn4 = 'model_run_{}.nc'.format(histrunsuffix)
+        fn4 = 'model_run{}.nc'.format(histrunsuffix)
         shutil.copyfile(
             gdir.get_filepath('model_run', filesuffix=histrunsuffix),
             os.path.join(deep_path, fn4))
