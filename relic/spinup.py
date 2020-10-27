@@ -17,10 +17,6 @@ def minimize_dl(tbias, mb, fls, dl, len2003, gdir, optimization, runsuffix=''):
 
     try:
         model.run_until_equilibrium(ystep=10, max_ite=200)
-    except ValueError:
-        log.info('(%s) tbias of %.2f did exceed max iterations (def 1000yrs)' %
-                 (gdir.rgi_id, tbias))
-        return len2003**2
     except FloatingPointError:
         if optimization is True:
             log.info('(%s) tbias of %.2f gave length: %.2f' %
@@ -34,6 +30,11 @@ def minimize_dl(tbias, mb, fls, dl, len2003, gdir, optimization, runsuffix=''):
             log.info('(%s) tbias of %.2f exceeds domain boundaries' %
                      (gdir.rgi_id, tbias))
             return len2003**2
+        elif (optimization is True) and \
+                ('Did not find equilibrium' in err.args[0]):
+            log.info('(%s) tbias of %.2f did exceed max iterations' %
+                (gdir.rgi_id, tbias))
+            return len2003 ** 2
         elif 'CFL error' in err.args[0]:
             log.info('(%s) tbias of %.2f leads to CFL error' %
                      (gdir.rgi_id, tbias))
