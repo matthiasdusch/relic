@@ -35,54 +35,63 @@ MERGEDICT = {
 
 # stores [observation source, source ID, Plotname]
 GLCDICT = {
-    'RGI60-11.00106': ['wgms', 566, 'Pasterze', 'Austria'],
-    'RGI60-11.00116': ['wgms', 583, 'Obersulzbachkees', 'Austria'],
-    'RGI60-11.00687': ['wgms', 519, 'Taschachferner', 'Austria'],
-    'RGI60-11.00746': ['wgms', 522, 'Gepatschferner', 'Austria'],
-    'RGI60-11.00887': ['wgms', 511, 'Gurgler Ferner', 'Austria'],
-    'RGI60-11.00897': ['wgms', 491, 'Hintereisferner', 'Austria'],
+    'RGI60-11.00106': ['wgms', 566, 'Pasterze (with tributaries)',
+                       'Austria', 30],
+    'RGI60-11.00116': ['wgms', 583, 'Obersulzbachkees (with tributaries)',
+                       'Austria', 29],
+    'RGI60-11.00687': ['wgms', 519, 'Taschachferner', 'Austria', 27],
+    'RGI60-11.00746': ['wgms', 522, 'Gepatschferner', 'Austria', 25],
+    'RGI60-11.00887': ['wgms', 511, 'Gurgler Ferner', 'Austria', 28],
+    'RGI60-11.00897': ['wgms', 491, 'Hintereisferner', 'Austria', 26],
 
-    'RGI60-11.01238': ['glamos', 'B43/03', 'Rhonegletscher', 'Switzerland'],
+    'RGI60-11.01238': ['glamos', 'B43/03', 'Rhonegletscher', 'Switzerland',
+                       19],
     'RGI60-11.01270': ['glamos', 'A54l/04', 'Oberer Grindelwaldgletscher',
-                       'Switzerland'],
+                       'Switzerland', 16],
     'RGI60-11.01328': ['glamos', 'A54g/11', 'Unteraargletscher',
-                       'Switzerland'],
+                       'Switzerland', 18],
     'RGI60-11.01346': ['glamos', 'A54l/19',
-                       'Unterer Grindelwaldgletscher', 'Switzerland'],
+                       'Unterer Grindelwaldgletscher', 'Switzerland', 15],
     'RGI60-11.01450': ['glamos', 'B36/26',
-                       'Großer Aletschgletscher (with Mittelaletschgletscher)',
-                       'Switzerland'],
-    'RGI60-11.01478': ['glamos', 'B40/07', 'Fieschergletscher', 'Switzerland'],
-    'RGI60-11.01698': ['glamos', 'B31/04', 'Langgletscher', 'Switzerland'],
+                       'Großer Aletschgletscher with Mittelaletschgletscher',
+                       'Switzerland', 14],
+    'RGI60-11.01478': ['glamos', 'B40/07', 'Fieschergletscher', 'Switzerland',
+                       17],
+    'RGI60-11.01698': ['glamos', 'B31/04', 'Langgletscher', 'Switzerland', 13],
     'RGI60-11.01946': ['glamos', 'E22/03', 'Vadret da Morteratsch',
-                       'Switzerland'],
+                       'Switzerland', 23],
 
-    'RGI60-11.01974': ['wgms', 670, 'Ghiacciaio dei Forni', 'Italy'],
+    'RGI60-11.01974': ['wgms', 670, 'Ghiacciaio dei Forni', 'Italy', 24],
 
     'RGI60-11.02051': ['glamos', 'E23/06',
-                       'Vadret da Tschierva (with Vadret da Roseg)',
-                       'Switzerland'],
+                       'Vadret da Tschierva with Vadret da Roseg',
+                       'Switzerland', 22],
     'RGI60-11.02709': ['glamos', 'B72/15',
-                       'Glacier du Mont Mine (with Glacier de Ferpecle)',
-                       'Switzerland'],
-    'RGI60-11.02245': ['glamos', 'C83/12', 'Vadrec del Forno', 'Switzerland'],
-    'RGI60-11.02630': ['glamos', 'B63/05', 'Glacier de Zinal', 'Switzerland'],
-    'RGI60-11.02704': ['glamos', 'B52/29', 'Allalingletscher', 'Switzerland'],
-    'RGI60-11.02740': ['glamos', 'B90/02', 'Glacier du Trient', 'Switzerland'],
+                       'Glacier du Mont Mine with Glacier de Ferpecle',
+                       'Switzerland', 9],
+    'RGI60-11.02245': ['glamos', 'C83/12', 'Vadrec del Forno', 'Switzerland',
+                       21],
+    'RGI60-11.02630': ['glamos', 'B63/05', 'Glacier de Zinal', 'Switzerland',
+                       10],
+    'RGI60-11.02704': ['glamos', 'B52/29', 'Allalingletscher', 'Switzerland',
+                       12],
+    'RGI60-11.02740': ['glamos', 'B90/02', 'Glacier du Trient', 'Switzerland',
+                       5],
     'RGI60-11.02755': ['glamos', 'B73/16', 'Glacier de Tsijiore Nouve',
-                       'Switzerland'],
+                       'Switzerland', 8],
     'RGI60-11.02766': ['glamos', 'B83/03', 'Glacier de Corbassiere',
-                       'Switzerland'],
+                       'Switzerland', 7],
     'RGI60-11.02793': ['glamos', 'B85/16', 'Glacier de Saleinaz',
-                       'Switzerland'],
-    'RGI60-11.02822': ['glamos', 'B56/07', 'Gornergletscher', 'Switzerland'],
-    'RGI60-11.00872': ['glamos', 'A51d/10', 'Huefifirn', 'Switzerland'],
+                       'Switzerland', 6],
+    'RGI60-11.02822': ['glamos', 'B56/07', 'Gornergletscher', 'Switzerland', 11],
+    'RGI60-11.00872': ['glamos', 'A51d/10', 'Huefifirn (with tributary)',
+                       'Switzerland', 20],
 
-    'RGI60-11.03638': ['wgms', 354, 'Glacier de Argentiere', 'France'],
-    'RGI60-11.03643': ['wgms', 353, 'Mer de Glace (with Glacier de Leschaux)',
-                       'France'],
-    'RGI60-11.03646': ['wgms', 355, 'Glacier des Bossons', 'France'],
-    'RGI60-11.03684': ['wgms', 351, 'Glacier Blanc', 'France']
+    'RGI60-11.03638': ['wgms', 354, 'Glacier de Argentiere', 'France', 4],
+    'RGI60-11.03643': ['wgms', 353, 'Mer de Glace with Glacier de Leschaux',
+                       'France', 3],
+    'RGI60-11.03646': ['wgms', 355, 'Glacier des Bossons', 'France', 2],
+    'RGI60-11.03684': ['wgms', 351, 'Glacier Blanc', 'France', 1]
 }
 
 # wgms id of glacier with reconstructed length data
@@ -302,3 +311,8 @@ def annual_temperature_from_summer_temp(gdir, y0=1950, years=30):
 
 def merge_pair_dict(mainglc):
     return MERGEDICT.get(mainglc.strip('_merged'))
+
+
+def name_plus_id(rgi):
+    rgi = rgi.split('_merged')[0]
+    return '{} (#{})'.format(GLCDICT[rgi][2], GLCDICT[rgi][4])
